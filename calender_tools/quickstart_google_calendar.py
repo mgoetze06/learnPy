@@ -1,68 +1,182 @@
 from __future__ import print_function
 
-import datetime
+from datetime import datetime, timedelta
 import os.path
 import csv
+import os, time  # get file creation time
 
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
-
+import xml.etree.ElementTree as ET
 from datetime import date
-#from cal_setup import get_calendar_service
+import dateutil.parser as dateparser  # date conversion from csvdateformat to isoformat
+
+# from cal_setup import get_calendar_service
 
 # If modifying these scopes, delete the file token.json.
-SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+# SCOPES = ['https://www.googleapis.com/auth/calendar.readonly']
+SCOPES = ['https://www.googleapis.com/auth/calendar']
+debug = False
 
-def createEvent():
+
+# todo create labels for calendar events --> not only blocked in google calendar but a hint to what the event is in work calendar e.g. meeting (teams), on-site event, boss ...
+
+def parseCsvDateToIso(csvdate):
+    csvdate = csvdate.rstrip()
+    if ":" in csvdate:
+        # csvdate already has a time --> need to add the timezone
+        csvdate += "+02:00"
+        converted = dateparser.parse(csvdate, dayfirst=True).isoformat()
+    else:
+        # csv date is without time --> parser adds 00:00:00 because no time is given
+        converted = dateparser.parse(csvdate, dayfirst=True).isoformat()
+        # add timezone afterwards, now there is a time with timezone --> matching google time
+        converted += "+02:00"
+    # print("csv date before parsing: ",csvdate)
+    return converted
+
+
+def createSyncEvent(service):
+    (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime) = os.stat("outlook.csv")
+    # print("last modified: %s" % time.ctime(mtime))
+    text = "last Outlook sync. " + str(time.ctime(mtime))
+    today = datetime.today()
+    year = today.strftime("%Y")
+    month = today.strftime("%m")
+    day = today.strftime("%d")
+    start = datetime(int(year), int(month), int(day), 4, 30)
+    end = start + timedelta(minutes=30)
+    start = start.isoformat()
+    end = end.isoformat()
+
+    event_result = service.events().insert(calendarId='primary', body={
+        "summary": text,
+        "description": 'sync. from outlook calendar',
+        "start": {
+            "dateTime": start,
+            "timeZone": 'Europe/Berlin'},
+        "end": {
+            "dateTime": end,
+            "timeZone": 'Europe/Berlin'},
+    }).execute()
+
+
+def createEvent(csvEvent, service):
     # creates one hour event tomorrow 10 AM IST
-    #service = get_calendar_service()
-    today = date.today()
-    d1 = today.strftime("%d/%m/%Y")
-    print(d1)
-    #d = datetime.now().date()
-    #tomorrow = datetime(d.year, d.month, d.day, 10) + timedelta
-    #start = tomorrow.isoformat()
-    #end = (tomorrow + timedelta(hours=1)).isoformat()
-    #print(start)
-    #print(end)
+    # d = datetime.now().date()
+    # tomorrow = datetime(d.year, d.month, d.day, 10) + timedelta
+    startTime = parseCsvDateToIso(csvEvent['olApt.Start'])
+    endTime = parseCsvDateToIso(csvEvent['olApt.End'])
+    summary, location = createEventCaption(csvEvent['olApt.Subject'], csvEvent['olApt.Location'])
+    if location == "":
+        location = "sync. from outlook calendar"
+    # print(start)
+    # print(end)
+
+    event_result = service.events().insert(calendarId='primary', body={
+        "summary": summary,
+        "description": location,
+        "start": {
+            "dateTime": startTime,
+            "timeZone": 'Europe/Berlin'},
+        "end": {
+            "dateTime": endTime,
+            "timeZone": 'Europe/Berlin'},
+    }).execute()
+
+    print("created event")
+    # print("id: ", event_result['id'])
+    # print("summary: ", event_result['summary'])
+    # print("starts at: ", event_result['start']['dateTime'])
+    # print("ends at: ", event_result['end']['dateTime'])
+
 
 def openCsv(filename):
-    with open(filename)as csvfile:
-
-        filereader = csv.DictReader(csvfile, delimiter=",")
+    with open(filename) as csvfile:
+        filereader = csv.DictReader(csvfile, delimiter=";")
         data = list(filereader)
-        #filereader = csv.reader(csvfile, delimiter=",")
-        #for row in filereader:
-            #print(row)
-            #print("Subject:",row['olApt.Subject'],"\nvon: ",row['olApt.Start'], " bis ", row['olApt.End'], "\nOrt: ",row['olApt.Location'])
+        # filereader = csv.reader(csvfile, delimiter=",")
+        # for row in filereader:
+        # print(row)
+        # print("Subject:",row['olApt.Subject'],"\nvon: ",row['olApt.Start'], " bis ", row['olApt.End'], "\nOrt: ",row['olApt.Location'])
         return data
 
-def compareEvents(events):
+
+def createEventCaption(oldcaption, location):
+    root = ET.parse('keywords.xml').getroot()
+    # keywords = root.find('keywords')
+    # print(root.text)
+    keywordMatch = False
+    newlocation = ""
+    for kwType in root.findall('type'):
+        # print(kwType.text)
+        desc = kwType.find('description').text
+        # print(desc)
+        typeUsed = False
+        for keyword in kwType.findall('keyword'):
+            # print(keyword.text)
+            if keyword.text in oldcaption and not typeUsed:
+                if keywordMatch:  # more than one keyword match
+                    newcaption = newcaption + " " + desc
+                else:
+                    newcaption = desc
+                keywordMatch = True
+                typeUsed = True
+    if not keywordMatch:
+        newcaption = "Termin"
+
+    if "Microsoft Teams-Besprechung" in location:
+        newlocation = "Meeting"
+
+    return newcaption, newlocation
+
+
+def compareEvents(events, service):
     print("this is comparing events")
     outlookEventsCsv = openCsv("outlook.csv")
-    for row in outlookEventsCsv:
+    if (debug):
+        print("no sync. because of debug")
+    else:
+        createSyncEvent(service)
+    for row in outlookEventsCsv:  # csv events from outlook
         csvEventName = row['olApt.Subject'].rstrip()
+        csvStartDate = parseCsvDateToIso(row['olApt.Start'])
+        csvEndDate = parseCsvDateToIso(row['olApt.End'])
         newEvent = True
-        #print(csvEventName)
-        for event in events:
-            #print(event['summary'])
-            if event['summary'] == csvEventName: #TODO event comparison also based on date not only on name
-                #print("matching events")
-                #print(csvEventName)
+        # print(csvEventName)
+        print("csv event from: ", csvStartDate, " to ", csvEndDate)
+        for event in events:  # events from google calendar
+            # print(event['summary'])
+            # if event['summary'] == csvEventName:
+            # print("google event from: ", event['start']['dateTime'], " to ", event['end']['dateTime'])
+            if event['start']['dateTime'] == csvStartDate and event['end']['dateTime'] == csvEndDate:
+                # TODO event comparison also based on date not only on name
+                # todo only check if there is a event in given time range, if not --> create new event
+                # todo if there is already a event in google calendar --> nothing to do
+                print("event already in google calendar")
+                # print(csvEventName)
                 event['summary']
-                newEvent=False
+                newEvent = False
                 break
-            #else:
-                #print("no match")
-        if(newEvent): #currentCSV EVent is a truly new event (no doubles)
-            print("need to add to google calendar: ",csvEventName)
-            createEvent()
+            # else:
+            # print("no match")
+        if (newEvent):  # currentCSV EVent is a truly new event (no doubles)
+            print("need to add to google calendar: ", csvEventName)
+            # todo to minimize api calls check wether an event is recurring
+            # todo check if "abgesagt" is inside the subject --> new subject = "free"
+            # todo events for whole day (no time information, only date) -->
+            if (debug):
+                print("event not added because of debug")
+            else:
+                createEvent(row, service)
         else:
-            #current Event from CSV is already in google calendar
+            # current Event from CSV is already in google calendar
             print("already in google calendar: ", csvEventName)
+
+
 def main():
     """Shows basic usage of the Google Calendar API.
        Prints the start and name of the next 10 events on the user's calendar.
@@ -88,7 +202,7 @@ def main():
         service = build('calendar', 'v3', credentials=creds)
 
         # Call the Calendar API
-        now = datetime.datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
+        now = datetime.utcnow().isoformat() + 'Z'  # 'Z' indicates UTC time
         print('Getting the upcoming 20 events')
         events_result = service.events().list(calendarId='primary', timeMin=now,
                                               maxResults=20, singleEvents=True,
@@ -104,13 +218,10 @@ def main():
             print(event)
             start = event['start'].get('dateTime', event['start'].get('date'))
             print(start, event['summary'])
-        compareEvents(events)
+        compareEvents(events, service)
 
     except HttpError as error:
         print('An error occurred: %s' % error)
-
-
-
 
 
 if __name__ == '__main__':
