@@ -13,6 +13,7 @@ from googleapiclient.errors import HttpError
 import xml.etree.ElementTree as ET
 from datetime import date
 import dateutil.parser as dateparser  # date conversion from csvdateformat to isoformat
+import logging
 
 # from cal_setup import get_calendar_service
 
@@ -21,6 +22,8 @@ import dateutil.parser as dateparser  # date conversion from csvdateformat to is
 SCOPES = ['https://www.googleapis.com/auth/calendar']
 debug = False
 
+newEvents = 0
+oldEvents = 0
 
 # todo create labels for calendar events --> not only blocked in google calendar but a hint to what the event is in work calendar e.g. meeting (teams), on-site event, boss ...
 
@@ -87,7 +90,9 @@ def createEvent(csvEvent, service):
             "timeZone": 'Europe/Berlin'},
     }).execute()
 
-    print("created event")
+    #print("created event")
+    logging.info("created event")
+
     # print("id: ", event_result['id'])
     # print("summary: ", event_result['summary'])
     # print("starts at: ", event_result['start']['dateTime'])
@@ -135,19 +140,23 @@ def createEventCaption(oldcaption, location):
 
 
 def compareEvents(events, service):
-    print("this is comparing events")
+    global newEvents,oldEvents
+    #print("this is comparing events")
     outlookEventsCsv = openCsv("outlook.csv")
     if (debug):
-        print("no sync. because of debug")
+        #print("no sync. because of debug")
+        logging.info("no sync. event because of debug")
     else:
         createSyncEvent(service)
+        logging.info("sync. event created")
     for row in outlookEventsCsv:  # csv events from outlook
         csvEventName = row['olApt.Subject'].rstrip()
         csvStartDate = parseCsvDateToIso(row['olApt.Start'])
         csvEndDate = parseCsvDateToIso(row['olApt.End'])
         newEvent = True
         # print(csvEventName)
-        print("csv event from: ", csvStartDate, " to ", csvEndDate)
+        #print("csv event from: ", csvStartDate, " to ", csvEndDate)
+        #logging.info("csv event from %s to %s", csvStartDate,csvEndDate)
         for event in events:  # events from google calendar
             # print(event['summary'])
             # if event['summary'] == csvEventName:
@@ -156,7 +165,8 @@ def compareEvents(events, service):
                 # TODO event comparison also based on date not only on name
                 # todo only check if there is a event in given time range, if not --> create new event
                 # todo if there is already a event in google calendar --> nothing to do
-                print("event already in google calendar")
+                #print("event already in google calendar")
+                #logging.info("event already in google calendar")
                 # print(csvEventName)
                 event['summary']
                 newEvent = False
@@ -164,19 +174,22 @@ def compareEvents(events, service):
             # else:
             # print("no match")
         if (newEvent):  # currentCSV EVent is a truly new event (no doubles)
-            print("need to add to google calendar: ", csvEventName)
+            #print("need to add to google calendar: ", csvEventName)
+            logging.info('need to add to google calendar: %s', csvEventName)
             # todo to minimize api calls check wether an event is recurring
             # todo check if "abgesagt" is inside the subject --> new subject = "free"
             # todo events for whole day (no time information, only date) -->
             if (debug):
-                print("event not added because of debug")
+                #print("event not added because of debug")
+                logging.info("event not added because of debug")
             else:
                 createEvent(row, service)
+            newEvents+=1
         else:
             # current Event from CSV is already in google calendar
-            print("already in google calendar: ", csvEventName)
-
-
+            #print("already in google calendar: ", csvEventName)
+            logging.info("already in google calendar: %s", csvEventName)
+            oldEvents+=1
 def main():
     """Shows basic usage of the Google Calendar API.
        Prints the start and name of the next 10 events on the user's calendar.
@@ -185,6 +198,11 @@ def main():
     # The file token.json stores the user's access and refresh tokens, and is
     # created automatically when the authorization flow completes for the first
     # time.
+    logging.basicConfig(filename='outlook_sync_logging.log', encoding='utf-8', level=logging.DEBUG,
+                        format='%(asctime)s %(message)s')
+    logging.info('script started')
+
+
     if os.path.exists('token.json'):
         creds = Credentials.from_authorized_user_file('token.json', SCOPES)
     # If there are no (valid) credentials available, let the user log in.
@@ -211,6 +229,7 @@ def main():
 
         if not events:
             print('No upcoming events found.')
+            logging.info('No upcoming events found.')
             return
 
         # Prints the start and name of the next 10 events
@@ -219,10 +238,11 @@ def main():
             start = event['start'].get('dateTime', event['start'].get('date'))
             print(start, event['summary'])
         compareEvents(events, service)
-
+        total = newEvents+oldEvents
+        logging.info("%d/%d events added to calendar",newEvents,total)
     except HttpError as error:
         print('An error occurred: %s' % error)
-
+        logging.info('An error occurred: %s' % error)
 
 if __name__ == '__main__':
     main()

@@ -4,6 +4,7 @@ import dateutil.parser as dateparser
 import os.path
 import os, time
 import xml.etree.ElementTree as ET
+import logging
 
 csvdate = "29.07.2022"
 googledate = "2022-04-28T13:00:00+02:00"
@@ -24,6 +25,17 @@ start = datetime.now()
 end = start + timedelta(minutes=30)
 start = start.isoformat()
 end = end.isoformat()
+
+test1 = "03.05.2022  08:00:00"
+test2 = "03.05.2022  12:00:00"
+if start > dateparser.parse(test1).isoformat():
+    print(test1)
+    print("Vergangenheit")
+
+if start > dateparser.parse(test2).isoformat():
+    print(test2)
+    print("Zukunft")
+
 
 print(start)
 print(end)
@@ -73,5 +85,13 @@ end = end.isoformat()
 
 print(start)
 print(end)
+
+
+logging.basicConfig(filename='outlook_sync_logging.log', encoding='utf-8', level=logging.DEBUG,format='%(asctime)s %(message)s')
+logging.debug('This message should go to the log file')
+logging.info('So should this')
+logging.warning('And this, too')
+logging.warning('%s before you %s', 'Look', 'leap!')
+
 # d1 = today.strftime("%d/%m/%Y")
 # print(today)
