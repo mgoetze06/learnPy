@@ -74,6 +74,7 @@ print(createEventCaption("Dow Leuna Simoreg Steuerung Umrichtertausch", "Microso
 (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime) = os.stat("outlook.csv")
 # print("last modified: %s" % time.ctime(mtime))
 text = "last Outlook sync. " + str(time.ctime(mtime))
+outlook_time = mtime
 today = datetime.today()
 year = today.strftime("%Y")
 month = today.strftime("%m")
@@ -93,5 +94,29 @@ logging.info('So should this')
 logging.warning('And this, too')
 logging.warning('%s before you %s', 'Look', 'leap!')
 
+
+
+f = open("lastSync.txt",'w')
+f.write("")
+f.close()
+def compareFileTimes(file1,file2):
+    (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime) = os.stat(file1)
+    # print("last modified: %s" % time.ctime(mtime))
+    #text = "last Outlook sync. " + str(time.ctime(mtime))
+    time1 = mtime
+    (mode, ino, dev, nlink, uid, gid, size, atime, mtime, ctime) = os.stat(file2)
+    # print("last modified: %s" % time.ctime(mtime))
+    #text = "last Outlook sync. " + str(time.ctime(mtime))
+    time2 = mtime
+    if time1 > time2:
+        print("file1 is newer")
+    else:
+        print("file1 is older")
+
+    return time1>time2
+
 # d1 = today.strftime("%d/%m/%Y")
 # print(today)
+
+if compareFileTimes("outlook.csv","lastSync.txt"):
+    print("i need to check for new events")
