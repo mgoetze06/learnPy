@@ -5,8 +5,6 @@ import ezdxf
 import glob
 from pathlib import Path
 
-debug = False
-
 class Revision:
     def __init__(self, bearb, date,text,index):
         self.bearb = bearb
@@ -35,7 +33,7 @@ class Revision:
 #r1.print()
 #r2.print()
 
-def get_revisionManual(layout,file):
+def get_revisionManual(layout):
     manualRevision = False
     manualRevs = []
     for i in range(5): #loop through all available layers
@@ -54,23 +52,15 @@ def get_revisionManual(layout,file):
                     for te in temp:
                         if not te=="":
                             #print(te)
-                            if debug:
-                                print(te)
                             temp_rev.append(te) #add separated string to temp list
-                    if len(temp_rev)>0:
-                        if len(temp_rev) > 2:
-                            customRevision = Revision(temp_rev[3],temp_rev[2],temp_rev[1],temp_rev[0])
+                    customRevision = Revision(temp_rev[3],temp_rev[2],temp_rev[1],temp_rev[0])
                     #customRevision.print() #create a revision object and print it
-                            manualRevs.append(customRevision)
-                        else:
-                            print("%s\tProblem with REVISION!!!"%file)
+                    manualRevs.append(customRevision)
     if manualRevision:
+        print("manuelle Revisionen (aus Textfeldern):")
         manualRevs.sort(key=lambda x: x.index, reverse=True)
-        if debug:
-            print("manuelle Revisionen (aus Textfeldern):")
-            for rev in manualRevs:
-                rev.print()
-    return manualRevision
+        for rev in manualRevs:
+            rev.print()
 
 def get_revisionBlock(entity):
     revList_inBlock = []
@@ -99,25 +89,11 @@ def get_revisionBlock(entity):
         #only append if every field is filled
         if count > 0:
             revList_inBlock.append(revision)
-    if debug:
-        for obj in revList_inBlock:
-            obj.print()
+    for obj in revList_inBlock:
+        obj.print()
 
 #blockrefs = layout.query('YA25DE[name=="BEN2"]')
-def exportBlockAttr(doc,layout,block,file,f):
-    text = 'INSERT[name=="'+block+'"]'
-    blockrefs = layout.query(text)
-    if len(blockrefs):
-        entity = blockrefs[0] #process first entity found; only one entity for YA25DE
-        #f = open("blockattr.txt", 'a')
-        temp = "'file';'%s'\n" % (file)
-        f.write(temp)
-        for attrib in entity.attribs:
-            temp = "'%s';'%s'\n" % (attrib.dxf.tag,attrib.dxf.text)
-            f.write(temp)
-        #f.close()
 def getBlockAttr(doc,layout,block,attr):
-    #function to display the current data in block attr
     text = 'INSERT[name=="' + block + '"]'
     # print(text)
     blockrefs = layout.query(text)
@@ -128,8 +104,7 @@ def updateBlockAttr(doc,layout,block,attr,newText,file):
     blockrefs = layout.query(text)
     if len(blockrefs):
         entity = blockrefs[0] #process first entity found; only one entity for YA25DE
-        if debug:
-            print("Revisionen vom Block %s:"%(block))
+        print("Revisionen vom Block %s:"%(block))
         get_revisionBlock(entity)
         entity.get_attrib(attr).dxf.text = newText
         pageIndex = entity.get_attrib("ZT").dxf.text
@@ -143,38 +118,26 @@ def updateBlockAttr(doc,layout,block,attr,newText,file):
 dxffiles = []
 for file in glob.glob("*.dxf"):
     dxffiles.append(file)
-print("Script to change values in %d dxf files (%s ... %s)" % (len(dxffiles),dxffiles[0],dxffiles[-1]))
-blkName = input("Blockname (mostly YA25DE):")
-attr = input("Attribut (mostly BEN2):")
-newVal = input("new Value:")
-#blkName = "YA25DE"
-#attr = "BEN2"
-if debug:
-    print(attr)
-    print(blkName)
+print("Script Changing values in %d dxf files (%s ... %s)" % (len(dxffiles),dxffiles[0],dxffiles[-1]))
+#blkName = input("Blockname:")
+blkName = "YA25DE"
+print(blkName)
     #YA25DE #Fußzeile
 
-f = open("blockattr.txt", 'w')
-f.write("")
-f.close()
-f = open("blockattr.txt", 'a')
 #print(glob.glob("*.dxf"))
-for file in dxffiles:
-    #file = "a0102.dxf"
-    doc = ezdxf.readfile(file)
-    layout = doc.modelspace()
-
-    get_revisionManual(layout,file)
-    blockrefs = layout.query(text)
-    get_revisionBlock(blockrefs)
-    if debug:
-        print(getBlockAttr(doc,layout,blkName,attr))
-    updateBlockAttr(doc,layout,blkName,attr,newVal,file)
-    if debug:
-        print(getBlockAttr(doc,layout,blkName,attr))
-
-
-    exportBlockAttr(doc,layout,blkName,file,f)
-    print("%s\tdone" % file)
-f.close()
-done = input("done")
+#for file in dxffiles:
+file = "a0102.dxf"
+doc = ezdxf.readfile(file)
+layout = doc.modelspace()
+#blk = doc.blocks.get("YA25DE")#.get_attrib('BEN2')
+#print(blk.dxf.dxfattribs.get_attrib('BEN2'))
+#for attrib in blk.dxf.dxfattribs:
+#    print(attrib.tag)
+#print(blk.dxf.dxfattribs)
+#print(blk)
+#print(doc.layout_names())
+#psp = doc.layout('Layout1')
+get_revisionManual(layout)
+print(getBlockAttr(doc,layout,blkName,"BEN2"))
+updateBlockAttr(doc,layout,blkName,"BEN2","DAS IST EIN ZWEITER TEST",file)
+print(getBlockAttr(doc,layout,blkName,"BEN2"))
