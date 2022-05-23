@@ -133,8 +133,8 @@ def updateBlockAttr(doc,layout,block,attr,newText,file):
         get_revisionBlock(entity)
         entity.get_attrib(attr).dxf.text = newText
         pageIndex = entity.get_attrib("ZT").dxf.text
-        if not pageIndex in file:
-                file = Path(file).stem +"_"+ pageIndex + ".dxf"
+        #if not pageIndex in file:
+                #file = Path(file).stem +"_"+ pageIndex + ".dxf"
         #for attrib in entity.attribs:
             #if attrib.dxf.tag == attr: # identify attribute by tag
             #    attrib.dxf.text = newText # change attribute content to newText
@@ -164,9 +164,9 @@ for file in dxffiles:
     doc = ezdxf.readfile(file)
     layout = doc.modelspace()
 
-    get_revisionManual(layout,file)
-    blockrefs = layout.query(text)
-    get_revisionBlock(blockrefs)
+    #get_revisionManual(layout,file)
+    #blockrefs = layout.query(text)
+    #get_revisionBlock(blockrefs)
     if debug:
         print(getBlockAttr(doc,layout,blkName,attr))
     updateBlockAttr(doc,layout,blkName,attr,newVal,file)
