@@ -3,114 +3,74 @@ from matplotlib.font_manager import FontProperties
 
 import ezdxf
 import glob
+from ezdxf import groupby
 from pathlib import Path
 
 debug = False
+onlyExport = False
 
-# class Revision:
-#     #class for revision index in bottom left of a electrical drawing
-#     def __init__(self, bearb, date,text,index):
-#         self.bearb = bearb
-#         self.date = date
-#         self.text = text
-#         self.index = index
-#     def print(self):
-#         print("%s\t%s\t%s\t%s" % (self.index,self.text,self.date,self.bearb))
-#     def increase(self):
-#         #increase the revision index
-#         temp = self.index
-#         temp = int(temp.replace('R', ''))
-#         temp += 1
-#         self.index = "R%d"%(temp)
-#     def decrease(self):
-#         #decrease the revision index
-#         temp = self.index
-#         temp = int(temp.replace('R', ''))
-#         temp -= 1
-#         self.index = "R%d"%(temp)
+def exportBlockAttr(dxffiles):
+    for file in dxffiles:
+        csv_str = "'%s';" % file
+        print(file)
+        doc = ezdxf.readfile(file)
+        layout = doc.modelspace()
+        group = layout.groupby(dxfattrib="layer")
+        print(group.items())
+        for layer, entities in group.items():
+            #print(f'Layer "{layer}" contains following entities:')
+            for entity in entities:
+                #print(f"    {entity}")
+                #print(entity.__str__())
+                #print(entity.dxftype())
+                if entity.dxftype() == 'TEXT':
+                    print(entity.dxf.text)
+                    #print(entity.dxf.tag)
+                    pos = entity.get_pos()
+                    print(pos)
+                    print(pos[0])
+                    print(pos[1])
+                        #print(entity.text)
+                    #print("all existing:")
+                    #print(entity.all_existing_dxf_attribs())
+                    #for attr in entity.all_existing_dxf_attribs():
+                    #    print(attr)
 
+            print("-" * 40)
+        #text = 'INSERT[name=="'+block+'"]'
+        #blockrefs = layout.query(text)
+        blockrefs = layout.query('*')
+        print(blockrefs)
+        for entity in blockrefs:
+            #f = open("blockattr.txt", 'a')
+            #temp = "'file';'%s'\n" % (file)
+            #f.write(temp)
+            #print(entity.__str__())
+            #print(entity.dxftype())
+            #print(entity.dxf.Name)
+            #print(entity['name'])
+            try:
+                if entity.dxf_attrib_exists:
+                    temp = ""
+                    for attrib in entity.attribs:
+                        if not attrib.dxf.text == '':
+                            temp = temp + "'%s';'%s';" % (attrib.dxf.tag,attrib.dxf.text)
+                    print(temp)
+                    #f.close()
+            except:
+                pass
+        for insert in layout.query('INSERT'):
+            block = doc.blocks[insert.dxf.name]
+           # print(insert.dxf.name)
+            temp = "'" + insert.dxf.name + "';"
+            for e in insert.attribs:
+                try:
+                    #if not e.dxf.text == "":
+                     temp = temp + "'%s';'%s';" % (e.dxf.tag, e.dxf.text)
 
-# def get_revisionManual(layout,file):
-#     manualRevision = False
-#     manualRevs = []
-#     for i in range(5): #loop through all available layers
-#         text = 'TEXT[layer=="'+str(i)+'"]'
-#         texts = layout.query(text)
-#         if len(texts):
-#             for t in texts:
-#                 #print(t)
-#                 #print(t.dxf.text)
-#                 if ("REVISION" in t.dxf.text) or ("REV" in t.dxf.text) or ("Hn" in t.dxf.text):
-#                     #print("manuelle Revision als Text erkannt")
-#                     manualRevision = True
-#                     #print(t.dxf.text)
-#                     temp = t.dxf.text.split(" ")
-#                     temp_rev = [] #temporary list for the revision info
-#                     for te in temp:
-#                         if not te=="":
-#                             #print(te)
-#                             if debug:
-#                                 print(te)
-#                             temp_rev.append(te) #add separated string to temp list
-#                     if len(temp_rev)>0:
-#                         if len(temp_rev) > 2:
-#                             customRevision = Revision(temp_rev[3],temp_rev[2],temp_rev[1],temp_rev[0])
-#                     #customRevision.print() #create a revision object and print it
-#                             manualRevs.append(customRevision)
-#                         else:
-#                             print("%s\tProblem with REVISION!!!"%file)
-#     if manualRevision:
-#         manualRevs.sort(key=lambda x: x.index, reverse=True)
-#         if debug:
-#             print("manuelle Revisionen (aus Textfeldern):")
-#             for rev in manualRevs:
-#                 rev.print()
-#     return manualRevision
-
-# def get_revisionBlock(entity):
-#     revList_inBlock = []
-#     revs = ["AEZU","AETX","AEDAT","AENAM"]
-#     for r in range(3):
-#         revision = Revision(None,None,None,None)
-#         count = 0
-#         for revtype in revs:
-#             query = revtype + str(r)
-#             value = entity.get_attrib_text(query)
-#             if not value=="":
-#                 if "ZU" in revtype:
-#                     revision.index = value
-#                     count += 1
-#                 if "TX" in revtype:
-#                     revision.text = value
-#                     count += 1
-#                 if "DAT" in revtype:
-#                     revision.date = value
-#                     count += 1
-#                 if "NAM" in revtype:
-#                     revision.bearb = value
-#                     count += 1
-#             #Revision(None, None, None, None)
-#
-#         #only append if every field is filled
-#         if count > 0:
-#             revList_inBlock.append(revision)
-#     if debug:
-#         for obj in revList_inBlock:
-#             obj.print()
-
-#blockrefs = layout.query('YA25DE[name=="BEN2"]')
-def exportBlockAttr(doc,layout,block,file,f):
-    text = 'INSERT[name=="'+block+'"]'
-    blockrefs = layout.query(text)
-    if len(blockrefs):
-        entity = blockrefs[0] #process first entity found; only one entity for YA25DE
-        #f = open("blockattr.txt", 'a')
-        temp = "'file';'%s'\n" % (file)
-        f.write(temp)
-        for attrib in entity.attribs:
-            temp = "'%s';'%s'\n" % (attrib.dxf.tag,attrib.dxf.text)
-            f.write(temp)
-        #f.close()
+                except:
+                    pass
+            print(temp)
 def getBlockAttr(doc,layout,block,attr):
     #function to display the current data in block attr
     text = 'INSERT[name=="' + block + '"]'
@@ -172,11 +132,8 @@ def checkValidBlock(doc,layout,attr,blocks_to_check,file):
 
     return valid_block
 
-def changeValue():
-    dxffiles = []
-    for file in glob.glob("*.dxf"):
-        #get all dxf files from current directory
-        dxffiles.append(file)
+def changeValue(dxffiles):
+
     print("###### ------- DXF VALUE CHANGER ------- ######")
     print("Script to change values in %d dxf files (%s ... %s)" % (len(dxffiles),dxffiles[0],dxffiles[-1])) #show summary of files
     blkName = input("Blockname (mostly YA25DE):")
@@ -242,4 +199,11 @@ def changeValue():
         print("error: not all files modified")
     input("done")
 if __name__ == "__main__":
-    changeValue()
+    dxffiles = []
+    for file in glob.glob("*.dxf"):
+        #get all dxf files from current directory
+        dxffiles.append(file)
+    if onlyExport:
+        exportBlockAttr(dxffiles)
+    else:
+        changeValue(dxffiles)
