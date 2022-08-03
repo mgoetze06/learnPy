@@ -69,7 +69,7 @@ def drawSetValue(img,x,y,rot):
     cv2.circle(img, end_point, 4, (0, 200, 200), -1)
 
 def drawMotorForce(img,point,direction,angle):
-    scale = 2
+    scale = 0.75
     angle = ((angle)/360)*2*math.pi
     x_off = int(point[0] + math.sin(angle) * direction*scale)
     y_off = int(point[1] + math.cos(angle) * direction*scale)
@@ -91,6 +91,11 @@ def calcMotorSpeedFromDirectionSpeed(x_speed,y_speed,rot_speed):
     m1 = limit(m1,neg_limit,pos_limit)
     m2 = limit(m2, neg_limit, pos_limit)
     m3 = limit(m3, neg_limit, pos_limit)
+
+    m1 = (m1/100)*255
+    m2 = (m2 / 100) * 255
+    m3 = (m3 / 100) * 255
+
     return m1,m2,m3
 
 def drawCoord(img):
