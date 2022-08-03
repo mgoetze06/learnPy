@@ -3,6 +3,7 @@ import math
 import numpy as np
 #https://www.youtube.com/watch?v=wwQQnSWqB7A
 
+#angles [angle m1, angle m2, angle 3]
 angles = [240,120,0]
 #angles = [150,30,270]
 
