@@ -152,7 +152,7 @@ while(1):
 
     cv2.imshow("window", img)
     k = cv2.waitKey(20) & 0xFF
-    if k == 27:
+    if k == 27: #esc
         break
 # w = 1920
 # h = 1080
