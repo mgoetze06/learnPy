@@ -53,7 +53,7 @@ def button_pressed_callback(channel):
     if not GPIO.input(encoderPinA):
         #print("Button pressed!")
         counter += 1
-        print(counter)
+        #print(counter)
     #else:
     #    print("Button released!")
 
@@ -74,18 +74,20 @@ def calcMotorSpeedFromDirectionSpeed(x_speed,y_speed,rot_speed,scale):
     m2 = A_inv[1] @ np.array([x_speed, y_speed, rot_speed])
     m3 = A_inv[2] @ np.array([x_speed, y_speed, rot_speed])
 
-    m1 = scale * m1
+    m1 = scale * m1 * 3
+    print("calc m1 speed: ",m1)
     m2 = scale * m2
     m3 = scale * m3
 
     neg_limit = -100
     pos_limit = 100
 
-    m1 = limit(m1,neg_limit,pos_limit)
+    m1 = limit(m1, neg_limit,pos_limit)
     m2 = limit(m2, neg_limit, pos_limit)
     m3 = limit(m3, neg_limit, pos_limit)
 
-    m1 = (m1/100)*255
+    # = m1 / 100
+    
     m2 = (m2 / 100) * 255
     m3 = (m3 / 100) * 255
 
@@ -193,7 +195,7 @@ class MyServer(BaseHTTPRequestHandler):
 
         speed_m1, speed_m2, speed_m3 = calcMotorSpeedFromDirectionSpeed(x_speed, y_speed, rot_speed,scale)
         print("motor speed: ",speed_m1, speed_m2, speed_m3)
-
+        
         self._redirect('/')  # Redirect back to the root url
         self.handleThread() #call a thread with given speeds
 
@@ -261,6 +263,7 @@ def handle_io(m1,m2,m3,event):
     #p2 = GPIO.PWM(m2_pin, 100)
     #p3 = GPIO.PWM(m3_pin, 100)
     #
+    print("speed_m1: ",m1)
      #start PWM Signal with dutycycle 0 --> no output, but pwm started
     p1.start(abs(m1))
     #p2.start(abs(m2))
@@ -290,7 +293,8 @@ def handle_io(m1,m2,m3,event):
         # p.stop()  # stop the PWM output
         # GPIO.cleanup()
 
-        print("time left: ", signal_time - (time()-start))
+        #         var[i] += 1
+        #print("time left: ", signal_time - (time()-start))
         # print("encoder: ", GPIO.input(encoderPinA))
         #     with data_lock:
         #         var[i] += 1
