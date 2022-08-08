@@ -4,7 +4,7 @@
 
 
 
-import RPi.GPIO as GPIO
+#import RPi.GPIO as GPIO
 import os
 #import cv2
 import math
@@ -20,7 +20,7 @@ event = Event()
 # GPIO.setmode(GPIO.BCM)  # choose BCM or BOARD numbering schemes. I use BCM
 
 
-host_name = '10.0.1.221'  # IP Address of Raspberry Pi
+host_name = 'localhost'  # IP Address of Raspberry Pi
 host_port = 8000
 
 angles = [240,120,0]
@@ -42,7 +42,7 @@ speed_m1 = speed_m2 = speed_m3 = 0
 threadStarted = False
 mythread = Thread()
 event = Event()
-GPIO.setmode(GPIO.BOARD)
+
 
 counter = 0
 
@@ -57,17 +57,18 @@ def button_pressed_callback(channel):
     #else:
     #    print("Button released!")
 
-
-encoderPinA = 15 #gpio22
-GPIO.setup(encoderPinA, GPIO.IN)
-#try:
-print("setup event detect")
-GPIO.add_event_detect(encoderPinA, GPIO.RISING,callback=button_pressed_callback, bouncetime=1)
-print("setup event detect2")
-#except:
-#    print("try setup event detect")
-#    pass 
-
+def ioSetup():
+    GPIO.setmode(GPIO.BOARD)
+    encoderPinA = 15 #gpio22
+    GPIO.setup(encoderPinA, GPIO.IN)
+    #try:
+    print("setup event detect")
+    GPIO.add_event_detect(encoderPinA, GPIO.RISING,callback=button_pressed_callback, bouncetime=1)
+    print("setup event detect2")
+    #except:
+    #    print("try setup event detect")
+    #    pass
+#ioSetup()
 
 def calcMotorSpeedFromDirectionSpeed(x_speed,y_speed,rot_speed,scale):
     m1 = A_inv[0] @ np.array([x_speed, y_speed, rot_speed])
@@ -132,8 +133,9 @@ class MyServer(BaseHTTPRequestHandler):
                speed:
                <input type="submit" name="submit" value="up">
                <input type="submit" name="submit" value="down">
-               {}
-           </form>
+               
+               1: %s 2:%s 3: %s 4: %s 5: %s 6: %s
+               </form>
            <form action="/" method="POST">
                control:
                <input type="submit" name="submit" value="X10">
@@ -145,10 +147,10 @@ class MyServer(BaseHTTPRequestHandler):
            </form>
            </body>
            </html>
-        '''
+        ''' % (1,2,3,4,5,6)
         #temp = getTemperature()
         self.do_HEAD()
-        self.wfile.write(html.format(str(scale)).encode("utf-8"))
+        #self.wfile.write(html.format(str(scale)).encode("utf-8"))
 
 
     def do_POST(self):
@@ -207,7 +209,7 @@ class MyServer(BaseHTTPRequestHandler):
             mythread.join()
         event.clear()
         mythread = Thread(target=handle_io, args=(speed_m1,speed_m2,speed_m3,event))
-        mythread.start()
+        #mythread.start()
         threadStarted = True
 
 
