@@ -127,7 +127,7 @@ def readADC(adc,gain,seconds_to_sleep):
     for i in range(4):
     # Read the specified ADC channel using the previously set gain value.
 
-        values[i] = adc.read_adc(i, gain=GAIN)
+        values[i] = adc.read_adc(i, gain=gain)
         #print(values[i])
         # Note you can also pass in an optional data_rate parameter that controls
         # the ADC conversion time (in samples/second). Each chip has a different
