@@ -3,10 +3,10 @@
 # Author: Tony DiCola
 # License: Public Domain
 import time
-
+#https://learn.adafruit.com/raspberry-pi-analog-to-digital-converters/ads1015-slash-ads1115
 # Import the ADS1x15 module.
 import Adafruit_ADS1x15
-
+#sudo pip install adafruit-ads1x15
 
 # Create an ADS1115 ADC (16-bit) instance.
 adc = Adafruit_ADS1x15.ADS1115()
