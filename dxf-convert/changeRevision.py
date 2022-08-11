@@ -250,7 +250,7 @@ def showPng():
 
         except:
             #print("external sleep")
-            time.sleep(1)
+            time.sleep(0.2)
             pass
         finally:
             #print("external finally")

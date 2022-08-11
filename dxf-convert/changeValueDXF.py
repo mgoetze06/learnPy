@@ -181,7 +181,7 @@ def changeValue(dxffiles):
             print("value after change: %s" % getBlockAttr(doc,layout,valid_block,attr))
 
 
-        exportBlockAttr(doc,layout,valid_block,file,f)
+        #exportBlockAttr(doc,layout,valid_block,file,f)
         print("%s\t\t\tdone" % file)
     f.close()
     print("")
