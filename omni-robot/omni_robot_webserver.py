@@ -167,7 +167,7 @@ def ioSetup():
     encoder2PinA = 29 #gpio5
     encoder2PinB = 31 #gpio6
     encoder3PinA = 37 #gpio26
-    encoder3PinB = 39 #not sure
+    encoder3PinB = 8  #gpio14
 
     GPIO.setmode(GPIO.BOARD)
 
