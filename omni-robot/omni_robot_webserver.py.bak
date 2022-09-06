@@ -510,7 +510,7 @@ def handle_io(m1,m2,m3,event,enable):
 
 if __name__ == '__main__':
     global pi_is_used
-    pi_is_used = True
+    pi_is_used = False
     if pi_is_used:
         import RPi.GPIO as GPIO  # always needed with RPi.GPIO
         ioSetup()
