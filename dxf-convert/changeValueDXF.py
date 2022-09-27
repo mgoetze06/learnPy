@@ -91,7 +91,11 @@ def updateBlockAttr(doc,layout,block,attr,newText,file):
     #print(text)
     blockrefs = layout.query(text)
     if len(blockrefs):
-        entity = blockrefs[0] #process first entity found; only one entity for YA25DE
+        print(blockrefs)
+        try:
+            entity = blockrefs[0] #process first entity found; only one entity for YA25DE
+        except:
+            entity = blockrefs
         oldtext = entity.get_attrib(attr).dxf.text
         entity.get_attrib(attr).dxf.text = newText
         pageIndex = entity.get_attrib("ZT").dxf.text
@@ -124,7 +128,11 @@ def checkValidBlock(doc,layout,attr,blocks_to_check,file):
             break
 
     if not valid_block:
-        valid_block = local_block_list[0]
+        try:
+            valid_block = local_block_list[0]
+        except:
+            print("inside valid block function: ",local_block_list)
+            valid_block = local_block_list
     if debug:
         print("local blocks: %s" % local_block_list)
         print(local_block_list)
@@ -167,12 +175,15 @@ def changeValue(dxffiles):
         layout = doc.modelspace()
         if debug:
             print("value before change: %s" % getBlockAttr(doc,layout,blkName,attr))
+        print(blocks_to_check)
         valid_block = checkValidBlock(doc,layout,attr,blocks_to_check,file)
-
-        if not block_dict.get(valid_block):
-            block_dict.update({valid_block: 1})
-        else:
-            block_dict.update({valid_block: (block_dict.get(valid_block)+1)})
+        try:
+            if not block_dict.get(valid_block):
+                block_dict.update({valid_block: 1})
+            else:
+                block_dict.update({valid_block: (block_dict.get(valid_block)+1)})
+        except:
+            pass
         if debug:
             print(block_dict)
 
@@ -183,6 +194,12 @@ def changeValue(dxffiles):
 
         #exportBlockAttr(doc,layout,valid_block,file,f)
         print("%s\t\t\tdone" % file)
+        blocks_to_check = []
+        blocks_to_check.append(blkName)
+        if blkName == "YA25DE":
+            blocks_to_check.append("YA25DE04")
+            blocks_to_check.append("YA25DE05")
+
     f.close()
     print("")
     print("")

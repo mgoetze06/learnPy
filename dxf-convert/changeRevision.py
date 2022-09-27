@@ -250,7 +250,7 @@ def showPng():
 
         except:
             #print("external sleep")
-            time.sleep(0.2)
+            time.sleep(0.1)
             pass
         finally:
             #print("external finally")
@@ -300,7 +300,7 @@ def showPng():
                     else:
                         # print("file is old")
                         plt.show(block=False)
-                        plt.pause(2)
+                        plt.pause(1)
                         #print("afterpause")
                         # time.sleep(1)
             plt.close()
@@ -328,6 +328,7 @@ if __name__ == '__main__':
     print("###### ------- DXF REVISION CHANGER ------- ######")
     print("Script to change values in %d dxf files (%s ... %s)" % (len(dxffiles),dxffiles[0],dxffiles[-1]))
     blkName = input("Blockname (mostly YA25DE):")
+    reviewEveryFile = query_yes_no("Want to review every single File?")
     #attr = input("Attribut (mostly BEN2):")
     #newVal = input("new Value:")
     #blkName = "YA25DE"
@@ -359,10 +360,11 @@ if __name__ == '__main__':
     no_revs_list = []
     block_dict = {}
     for i,file in enumerate(dxffiles):
-        exportPNG(file)
+        if reviewEveryFile:
+            exportPNG(file)
         #print(i)
         #print()
-        if i == 0:
+        if i == 0 and reviewEveryFile:
             #print("trying to start process")
             p1 = multiprocessing.Process(name='p1', target=showPng, daemon=True)
             p1.start()
@@ -370,10 +372,13 @@ if __name__ == '__main__':
         doc = ezdxf.readfile(file)
         layout = doc.modelspace()
         blkName = checkValidBlock(doc, layout, attr, blocks_to_check, file)
-        if not block_dict.get(blkName):
-            block_dict.update({blkName: 1})
-        else:
-            block_dict.update({blkName: (block_dict.get(blkName) + 1)})
+        try:
+            if not block_dict.get(blkName):
+                block_dict.update({blkName: 1})
+            else:
+                block_dict.update({blkName: (block_dict.get(blkName) + 1)})
+        except:
+            pass
         if debug:
             print(block_dict)
         #print(file)
@@ -399,17 +404,17 @@ if __name__ == '__main__':
         #else:
         if auto_rev:
             free_rev = get_revisionBlock(layout,blkName)
-            if free_rev > 0:
+            if free_rev > 0 and  not get_revisionManual(layout, file):
                 update_revisionBlock(doc,file,layout,blkName,new_revision,free_rev)
             else:
                 if debug:
                     print("kein freier Platz für Revision")
                 no_revs_list.append(file)
         print("%s\tdone\n" % file)
-
-        exportPNG(file)
-        print("Please review file!")
-        time.sleep(5)
+        if reviewEveryFile:
+            exportPNG(file)
+            print("Please review file!")
+            time.sleep(5)
     f.close()
 
     print("")
@@ -430,5 +435,6 @@ if __name__ == '__main__':
         for obj in no_revs_list:
             print(obj)
     #done = input("done")
-    p1.terminate()
-    p1.join()
+    if reviewEveryFile:
+        p1.terminate()
+        p1.join()
