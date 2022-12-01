@@ -11,6 +11,7 @@ import argparse
 from customDetectModule import customDetect
 import cv2
 import numpy as np
+import glob
 
 from utils.datasets import letterbox
 
@@ -27,35 +28,14 @@ def limit(val,low,high):
     if val > high:
         val = high
     return val
-
-if __name__ == '__main__':
-    print("script started")
-    img_size=640
-    opt = Namespace(weights='yolov7.pt',
-                    source="C:\projects\cv2\cv2_kamera\img1.jpeg",
-                    img_size=img_size,
-                    view_img=False,
-                    no_trace=True,
-                    save_txt=True,
-                    nosave=False,
-                    project='./',
-                    exist_ok=True,
-                    name='exp',
-                    update=False,
-                    augment=True,
-                    agnostic_nms=True,
-                    save_conf=True,
-                    device='',
-                    iou_thres=0.45,
-                    conf_thres=0.5,
-                    classes=None) #hier kann klassenfilter angegeben werden
-
-
+    
+    
+def detectOnSingleImage(opt,img_path):
     ####################################################
     #https://github.com/WongKinYiu/yolov7/blob/main/utils/datasets.py
     #loadImage Function (this is where original detect.py loads its image
     ################################################
-    img0 = cv2.imread("C:\projects\cv2\cv2_kamera\img1.jpeg")  # BGR
+    img0 = cv2.imread(img_path)  # BGR
     org_img = np.copy(img0)
     assert img0 is not None, 'Image Not Found ' + path
             #print(f'image {self.count}/{self.nf} {path}: ', end='')
@@ -74,41 +54,147 @@ if __name__ == '__main__':
     
     
     #prediction inside a script (using already opened cv2 image) and ignoring the --source argument
-    img, det = customDetect(opt,customImg=myimage,customImg0=img0,customPath = "C:\projects\cv2\cv2_kamera\img1.jpeg")
-    
-    print(img.size)
-    for d in range(len(det)):
-        print(det[d])
-        if det[d][1] == "person":
-            x = det[d][0][0]*img.shape[1]
-            y = det[d][0][1]*img.shape[0]
-            w = det[d][0][2]*img.shape[1]
-            h = det[d][0][3]*img.shape[0]
-            
-            print(x,y,w,h)
-            x1 = int(x - w/2)
-            x2 = int(x + w/2)
-            y1 = int(y - h/2)
-            y2 = int(y + h/2)
-            
-            x1 = limit(x1,0,img.shape[1])
-            x2 = limit(x2,0,img.shape[1])
-            y1 = limit(y1,0,img.shape[0])
-            y2 = limit(y2,0,img.shape[0])
-            
-            
-            print(img.shape)
-            print(x1,x2,y1,y2)
-            person = org_img[y1:y2,x1:x2]
-            file = "C:\projects\cv2\cv2_kamera\detections\person" + str(d) + ".jpeg"
-            cv2.imwrite(file,person)
-            cv2.imshow("detection",person)
-            cv2.waitKey()
+    img, det = customDetect(opt,customImg=myimage,customImg0=img0,customPath=img_path)
+    show_single_detection = False
+    if(show_single_detection):
+        print(img.size)
+        for d in range(len(det)):
+            print(det[d])
+            if det[d][1] == "0":
+                x = det[d][0][0]*img.shape[1]
+                y = det[d][0][1]*img.shape[0]
+                w = det[d][0][2]*img.shape[1]
+                h = det[d][0][3]*img.shape[0]
+                
+                print(x,y,w,h)
+                x1 = int(x - w/2)
+                x2 = int(x + w/2)
+                y1 = int(y - h/2)
+                y2 = int(y + h/2)
+                
+                x1 = limit(x1,0,img.shape[1])
+                x2 = limit(x2,0,img.shape[1])
+                y1 = limit(y1,0,img.shape[0])
+                y2 = limit(y2,0,img.shape[0])
+                
+                
+                print(img.shape)
+                print(x1,x2,y1,y2)
+                person = org_img[y1:y2,x1:x2]
+                #file = "C:\projects\cv2\cv2_kamera\detections\person" + str(d) + ".jpeg"
+                #cv2.imwrite(file,person)
+                cv2.imshow("detection",person)
+                cv2.waitKey()
     cv2.imshow("detection",img)
     cv2.waitKey()
     cv2.destroyAllWindows()
+
+def detectOnImage(opt,img_path):
+    files = []
+    extension = [".jpg",".JPG","JPEG",".png"]
     
+    if img_path.endswith(".jpg") or img_path.endswith(".png"):
+        print("single image")
+        files.append(img_path)
+    else:
+        print("is a path")
+        print(img_path)
+        for ext in extension:
+            for file in glob.glob(img_path + "/*"+ext):
+                files.append(file)
+    print(files)
+    model, stride = None, None
+    for img_path in files:
     
+            ####################################################
+        #https://github.com/WongKinYiu/yolov7/blob/main/utils/datasets.py
+        #loadImage Function (this is where original detect.py loads its image
+        ################################################
+        img0 = cv2.imread(img_path)  # BGR
+        org_img = np.copy(img0)
+        assert img0 is not None, 'Image Not Found ' + path
+                #print(f'image {self.count}/{self.nf} {path}: ', end='')
+
+            # Padded resize
+        myimage = letterbox(img0, img_size, stride=32)[0]
+
+        # Convert
+        myimage = myimage[:, :, ::-1].transpose(2, 0, 1)  # BGR to RGB, to 3x416x416
+        myimage = np.ascontiguousarray(myimage)
+        ######################################################
+
+
+        #normal prediction using path from --source argument
+        #img, det = customDetect(opt,customImg=None,customImg0=None,customPath = None)
+        
+        
+        #prediction inside a script (using already opened cv2 image) and ignoring the --source argument
+        img, det, model, stride = customDetect(opt,customImg=myimage,customImg0=img0,customPath=img_path, model=model,stride=stride)
+        show_single_detection = False
+        if(show_single_detection):
+            print(img.size)
+            for d in range(len(det)):
+                print(det[d])
+                if det[d][1] == "0":
+                    x = det[d][0][0]*img.shape[1]
+                    y = det[d][0][1]*img.shape[0]
+                    w = det[d][0][2]*img.shape[1]
+                    h = det[d][0][3]*img.shape[0]
+                    
+                    print(x,y,w,h)
+                    x1 = int(x - w/2)
+                    x2 = int(x + w/2)
+                    y1 = int(y - h/2)
+                    y2 = int(y + h/2)
+                    
+                    x1 = limit(x1,0,img.shape[1])
+                    x2 = limit(x2,0,img.shape[1])
+                    y1 = limit(y1,0,img.shape[0])
+                    y2 = limit(y2,0,img.shape[0])
+                    
+                    
+                    print(img.shape)
+                    print(x1,x2,y1,y2)
+                    person = org_img[y1:y2,x1:x2]
+                    #file = "C:\projects\cv2\cv2_kamera\detections\person" + str(d) + ".jpeg"
+                    #cv2.imwrite(file,person)
+                    cv2.imshow("detection",person)
+                    cv2.waitKey()
+        cv2.imshow("detection",img)
+        cv2.waitKey()
+    cv2.destroyAllWindows()
+
+
+
+
+if __name__ == '__main__':
+    print("script started")
+    img_size=640
+    opt = Namespace(weights='best.pt',#weights='yolov7.pt',
+                    source="C:\projects\cv2\cv2_kamera\img1.jpeg",
+                    img_size=img_size,
+                    view_img=False,
+                    no_trace=True,
+                    save_txt=True,
+                    nosave=False,
+                    project='./',
+                    exist_ok=True,
+                    name='exp',
+                    update=False,
+                    augment=True,
+                    agnostic_nms=True,
+                    save_conf=True,
+                    device='',
+                    iou_thres=0.45,
+                    conf_thres=0.5,
+                    classes=None) #hier kann klassenfilter angegeben werden
+
+    #print("detecting on single image")
+    #detectOnSingleImage(opt,"C:\projects\cv2\cv2_kamera\data\\test_imgs\pic71.png")
+    
+    print("detecting on directory")
+    detectOnImage(opt,"C:\projects\cv2\cv2_kamera\data\\test_imgs\\")
+    #detectOnSingleImage(opt)
     
     
     
