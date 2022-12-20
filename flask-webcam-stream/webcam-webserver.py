@@ -1,7 +1,20 @@
 import cv2
 from flask import Flask, render_template, Response
 import time, glob, random
+
 camera = cv2.VideoCapture(0)
+#camera = cv2.VideoCapture(0,cv2.CAP_DSHOW)
+#fourcc = cv2.VideoWriter_fourcc(*'XVID')
+print("Frame default resolution: (" + str(camera.get(cv2.CAP_PROP_FRAME_WIDTH)) + "; " + str(camera.get(cv2.CAP_PROP_FRAME_HEIGHT)) + ")")
+camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1920.0)#(7680, 4320
+camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080.0)
+#1920#
+#1080
+
+#1280.0
+#720.0
+
+print("Frame resolution set to: (" + str(camera.get(cv2.CAP_PROP_FRAME_WIDTH)) + "; ")
 app = Flask(__name__)
 
 def gen_frames():
@@ -14,7 +27,7 @@ def gen_frames():
             frame = buffer.tobytes()
             yield (b'--frame\r\n'
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')  # concat frame one by one and show result
-
+        time.sleep(0.04)
 def gen_slideshow():
     #success, frame = camera.read()  # read the camera frame
     #if not success:
