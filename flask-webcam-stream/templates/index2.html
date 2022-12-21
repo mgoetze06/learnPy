@@ -11,17 +11,28 @@
 
     <title>Live Streaming Demonstration</title>
 </head>
+<style>
+img {
+transition: transform .15s;
+}
+img:hover {
+
+cursor: pointer;
+transform: scale(1.03);
+}
+</style>
 <body>
-<div style="width:1024px;">
-  <div style="width:500px; float:left;">
+<div style="width: 100%;">
+  <div style="width:50%; float:left;">
   	<h3>Live Streaming 1</h3>
-	<img src="{{ url_for('video_feed_1') }}" width="100%">
-      <button>Vollbild Video 1</button>
+	<img src="{{ url_for('video_feed_1') }}" width="100%" onclick="location.href='/fullscreen1'">
+      <button class="btn" onclick="location.href='/fullscreen1'">Vollbild Video 1</button>
+
   </div>
-  <div style="width:500px; float:right;">
+  <div style="width:50%; float:right;">
 		<h3>Live Streaming 2</h3>
-	<img src="{{ url_for('video_feed_2') }}" width="100%">
-      <button>Vollbild Video 2</button>
+	<img src="{{ url_for('video_feed_2') }}" width="100%" onclick="location.href='/fullscreen2'">
+      <button class="btn" onclick="location.href='/fullscreen2'">Vollbild Video 2</button>
       <!--<button onclick="location.href='index.html'">Vollbild Video 2</button>-->
   </div>
 </div>

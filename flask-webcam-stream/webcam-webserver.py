@@ -6,8 +6,8 @@ camera = cv2.VideoCapture(0)
 #camera = cv2.VideoCapture(0,cv2.CAP_DSHOW)
 #fourcc = cv2.VideoWriter_fourcc(*'XVID')
 print("Frame default resolution: (" + str(camera.get(cv2.CAP_PROP_FRAME_WIDTH)) + "; " + str(camera.get(cv2.CAP_PROP_FRAME_HEIGHT)) + ")")
-camera.set(cv2.CAP_PROP_FRAME_WIDTH, 1920.0)#(7680, 4320
-camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080.0)
+camera.set(cv2.CAP_PROP_FRAME_WIDTH, 7680.0)#(7680, 4320
+camera.set(cv2.CAP_PROP_FRAME_HEIGHT, 4320.0)
 #1920#
 #1080
 
@@ -38,11 +38,12 @@ def gen_slideshow():
         #for file in glob.glob("./images/*jpg"):
         file = random.sample(images, 1)
         frame = cv2.imread(file[0])
+        frame = cv2.resize(frame,(1280,720))
         ret, buffer = cv2.imencode('.jpg', frame)
         frame = buffer.tobytes()
         yield (b'--frame\r\n'
                b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')  # concat frame one by one and show result
-        time.sleep(1)
+        time.sleep(2)
 
 def testCamera():
     print("camera init")
@@ -68,7 +69,15 @@ def video_feed_2():
 @app.route('/')
 def index():
     """Video streaming home page."""
-    return render_template('index.html')
+    return render_template('index2.html')
+@app.route('/fullscreen1')
+def fullscreen1():
+    """Video streaming home page."""
+    return render_template('fullscreen1.html')
+@app.route('/fullscreen2')
+def fullscreen2():
+    """Video streaming home page."""
+    return render_template('fullscreen2.html')
 
 
 if __name__ == '__main__':
