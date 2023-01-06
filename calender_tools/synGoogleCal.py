@@ -29,17 +29,18 @@ oldEvents = 0
 # todo create labels for calendar events --> not only blocked in google calendar but a hint to what the event is in work calendar e.g. meeting (teams), on-site event, boss ...
 
 def parseCsvDateToIso(csvdate):
+    print(csvdate)
     csvdate = csvdate.rstrip()
     if ":" in csvdate:
         # csvdate already has a time --> need to add the timezone
-        csvdate += "+02:00"
+        csvdate += "+01:00"
         converted = dateparser.parse(csvdate, dayfirst=True).isoformat()
     else:
         # csv date is without time --> parser adds 00:00:00 because no time is given
         converted = dateparser.parse(csvdate, dayfirst=True).isoformat()
         # add timezone afterwards, now there is a time with timezone --> matching google time
-        converted += "+02:00"
-    # print("csv date before parsing: ",csvdate)
+        converted += "+01:00"
+    print("csv parsed: ",csvdate)
     return converted
 
 
@@ -169,30 +170,48 @@ def compareEvents(events, service):
         logging.info("sync. event created")
     for row in outlookEventsCsv:  # csv events from outlook
         csvEventName = row['olApt.Subject'].rstrip()
-        csvStartDate = parseCsvDateToIso(row['olApt.Start'])
-        csvEndDate = parseCsvDateToIso(row['olApt.End'])
+        csvStartDate = dateparser.parse(parseCsvDateToIso(row['olApt.Start']))#.timestamp()
+        #csvEndDate = dateparser.isoparse(parseCsvDateToIso(row['olApt.End'])).timestamp()
+        csvEndDate = dateparser.parse(parseCsvDateToIso(row['olApt.End']))#.timestamp()
         newEvent = True
-        # print(csvEventName)
+        print(csvEventName)
         #print("csv event from: ", csvStartDate, " to ", csvEndDate)
         #logging.info("csv event from %s to %s", csvStartDate,csvEndDate)
+        if not events:
+            print("no google cal events in Function: CompareEvents; Adding event from CSV: ",csvEventName)
+            logging.info("no google cal events in Function: CompareEvents; Adding event from CSV: ",csvEventName)
+            if not debug:
+                createEvent(row, service)
+            else:
+                print("event not created due to debug")
         for event in events:  # events from google calendar
-            # print(event['summary'])
+            #print(event['summary'])
             # if event['summary'] == csvEventName:
-            # print("google event from: ", event['start']['dateTime'], " to ", event['end']['dateTime'])
-            if event['start']['dateTime'] == csvStartDate and event['end']['dateTime'] == csvEndDate:
+            #print("google event from: ", event['start']['dateTime'], " to ", event['end']['dateTime'])
+
+            starttime = dateparser.parse(event['start']['dateTime'])
+            endtime = dateparser.parse(event['end']['dateTime'])
+
+            #print("parsed google event from ", starttime)
+            #print("parsed google event from ", endtime)
+
+            #print("csv event from: ", csvStartDate, " to ", csvEndDate)
+
+            if starttime == csvStartDate and endtime == csvEndDate:
                 # TODO event comparison also based on date not only on name
                 # todo only check if there is a event in given time range, if not --> create new event
                 # todo if there is already a event in google calendar --> nothing to do
                 #print("event already in google calendar")
                 #logging.info("event already in google calendar")
-                # print(csvEventName)
-                event['summary']
+                print(csvEventName)
+                print(event['summary'])
+                logging.info('Csv Event %s already there.', csvEventName)
                 newEvent = False
                 break
             # else:
             # print("no match")
-        now = datetime.now()
-        if (newEvent) and now > csvStartDate:  # currentCSV EVent is a truly new event (no doubles)
+        now = datetime.now().timestamp()
+        if (newEvent):# and now > csvStartDate:  # currentCSV EVent is a truly new event (no doubles)
             #print("need to add to google calendar: ", csvEventName)
             logging.info('need to add to google calendar: %s', csvEventName)
             # todo to minimize api calls check wether an event is recurring
@@ -203,7 +222,7 @@ def compareEvents(events, service):
                 logging.info("event not added because of debug")
             else:
                 createEvent(row, service)
-            newEvents+=1
+            #newEvents+=1
         else:
             # current Event from CSV is already in google calendar
             #print("already in google calendar: ", csvEventName)
@@ -254,7 +273,7 @@ def main():
             if not events:
                 print('No upcoming events found.')
                 logging.info('No upcoming events found.')
-                return
+                #return
 
             # Prints the start and name of the next 10 events
             for event in events:
