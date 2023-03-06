@@ -2,12 +2,10 @@
 #define encoderB 3
 
 volatile int counter = 0; 
-volatile int last_counter = 0; 
 volatile int encoderA_state = 0; 
 volatile int encoderA_last_state = 0; 
 volatile int encoderB_state = 0; 
 volatile int encoderB_last_state = 0; 
-int zero_detection = 0;
 
  void setup() { 
    pinMode (encoderA,INPUT);
@@ -31,14 +29,6 @@ int zero_detection = 0;
        counter = -3000;
      }
    }
-   if (last_counter == counter){
-     zero_detection++;
-   }
-  if ((zero_detection > 50) && (counter < 450) && (counter > -450)){
-     zero_detection = 0;
-     counter = 0;
-     last_counter = 0;
-   }
    Serial.println(counter);
    delay(20);
  }
@@ -48,40 +38,21 @@ void pin_ISR() {
   if (encoderA_state != encoderA_last_state) {
     // If the encoderB state is different to the encoderA state, that means the encoder is rotating clockwise
     if (encoderB_state != encoderA_state) {
-      addCounter();
+      counter++;
     } else {
-      decCounter();
+      counter--;
     }
     } else {
     if (encoderB_state != encoderB_last_state) {
       // If the encoderB state is different to the encoderA state, that means the encoder is rotating clockwise
       if (encoderA_state != encoderB_state) {
-        decCounter();
+        counter--;
       } else {
-        addCounter();
+        counter++;
       }
     }
   }
   encoderA_last_state = encoderA_state;
   encoderB_last_state = encoderB_state;
-  last_counter = counter;
-}
-void addCounter(){
-  //if ((last_counter == 0) && (zero_counter > 30)){
-
-  //}
-  if ((counter < 300) && (counter > -300)){
-    counter = 300;
-  }else{
-    counter++;
-  }
-}
-void decCounter(){
-  if ((counter < 300) && (counter > -300)){
-    counter = -300;
-  }else{
-    counter--;
-  }
-  
 }
 
