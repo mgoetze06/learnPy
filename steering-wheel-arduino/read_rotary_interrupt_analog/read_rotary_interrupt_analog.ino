@@ -1,5 +1,7 @@
 #define encoderA 2
 #define encoderB 3
+#define trigger1_pin 4
+#define trigger2_pin 5
 
 volatile int counter = 0; 
 volatile int last_counter = 0; 
@@ -14,12 +16,14 @@ int sensorPin2 = A1;   // select the input pin for the potentiometer
 //int ledPin = 13;      // select the pin for the LED
 int sensorValue = 0;
 int sensorValue2 = 0;
+int trigger1 = 0;
+int trigger2 = 0;
 
  void setup() { 
    pinMode (encoderA,INPUT);
    pinMode (encoderB,INPUT);
-   //pinMode (button2,INPUT_PULLUP);
-   //pinMode (button3,INPUT_PULLUP);
+   pinMode (trigger1_pin,INPUT_PULLUP);
+   pinMode (trigger2_pin,INPUT_PULLUP);
    //pinMode (button4,INPUT_PULLUP);
    
    Serial.begin (115200);
@@ -52,8 +56,14 @@ int sensorValue2 = 0;
     sensorValue2 = analogRead(sensorPin2);
     Serial.print(sensorValue2);
     Serial.print("S3:");
-    Serial.println(counter);
-    delay(10);
+    Serial.print(counter);
+    trigger1 = digitalRead(trigger1_pin);
+    Serial.print("S4:");
+    Serial.print(trigger1);
+    trigger2 = digitalRead(trigger2_pin);
+    Serial.print("S5:");
+    Serial.println(trigger2);
+    delay(8);
  }
 void pin_ISR() {
   encoderA_state = digitalRead(encoderA);

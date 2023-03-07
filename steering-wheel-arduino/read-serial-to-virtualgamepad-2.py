@@ -24,14 +24,18 @@ def decodeString(sensors_in, string):
         sensor_values.append(int(sensor_value))
     return sensor_values
 
-sensor0 = sensor1 = steering = 0
+sensor0 = sensor1 = trigger1 = trigger2 = steering = 0
 sum_sensor = 0
-for i in range(50):
-    raw_data = ser.readline()
-    stripped_data = raw_data.decode().strip()
-    sum_sensor = sum_sensor + decodeString(3, stripped_data)[0]
-zero_sensor = sum_sensor/50
-print(zero_sensor)
+try:
+    for i in range(50):
+        raw_data = ser.readline()
+        stripped_data = raw_data.decode().strip()
+        sum_sensor = sum_sensor + decodeString(3, stripped_data)[0]
+    zero_sensor = sum_sensor/50
+    print(zero_sensor)
+except:
+    pass
+
 #exit(0)
 while True:
     raw_data = ser.readline()
@@ -41,7 +45,7 @@ while True:
         #rotary = int(stripped_data)
         #new_gamepad_x_float = rotary / 3000
         #print(new_gamepad_x_float)
-        sensors = decodeString(3,stripped_data)
+        sensors = decodeString(5,stripped_data)
         #print(sensors)
         sensor0 = sensors[0]
         if sensor0 > zero_sensor + 10:
@@ -58,6 +62,15 @@ while True:
             steering = 1
         if steering < -1:
             steering = -1
+        trigger1 = sensors[3]
+        trigger2 = sensors[4]
+        if trigger2 != 0:
+            sensor0 = 0
+        if trigger1 == 0:
+            gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
+        else:
+            #press_button
+            gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
         print(sensor0,steering)
         gamepad.left_joystick_float(x_value_float=steering, y_value_float=sensor0)
         gamepad.update()
