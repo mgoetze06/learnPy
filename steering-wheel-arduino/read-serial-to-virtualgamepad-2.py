@@ -46,7 +46,7 @@ while True:
         #new_gamepad_x_float = rotary / 3000
         #print(new_gamepad_x_float)
         sensors = decodeString(5,stripped_data)
-        #print(sensors)
+        print(sensors)
         sensor0 = sensors[0]
         if sensor0 > zero_sensor + 10:
             sensor0 = numpy.interp(sensor0, [zero_sensor, 800], [0, 1])
@@ -71,7 +71,7 @@ while True:
         else:
             #press_button
             gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
-        print(sensor0,steering)
+        #print(sensor0,steering)
         gamepad.left_joystick_float(x_value_float=steering, y_value_float=sensor0)
         gamepad.update()
     except:
