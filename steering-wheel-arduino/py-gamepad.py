@@ -86,8 +86,8 @@ sensors_historical = [ [] for _ in range(len_history) ]
 sensor0 = sensor1 = trigger1 = trigger2 = steering = 0
 sum_sensor = 0
 
-mythread = Thread(target=handle_visuals_thread, args=())
-mythread.start()
+#mythread = Thread(target=handle_visuals_thread, args=())
+#mythread.start()
 
 
 try:
@@ -138,18 +138,18 @@ while True:
             gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
         gamepad.left_joystick_float(x_value_float=steering, y_value_float=sensor0)
         gamepad.update()
-        sensors_historical = compute_array_sensors(sensors_historical,[sensor0,sensor1,steering,trigger1,trigger2],len_history)
-        avg_sensors = compute_average(sensors_historical=sensors_historical,num_last_values=2)
-        fig, ax = plt.subplots(ncols=len(sensors),figsize=(21,10))
-        for idsensor,sensor in enumerate(sensors_historical[0]):
-            #print(sensor)
-            ax[idsensor].bar(0,sensor)
-            ax[idsensor].set_title("Sensor " + str(idsensor))
-            ax[idsensor].set_xlim([-1, 1])
-            ax[idsensor].set_ylim([-1, 1])
-            ax[idsensor].hlines(avg_sensors[idsensor],-1,1,colors="C1")
+        # sensors_historical = compute_array_sensors(sensors_historical,[sensor0,sensor1,steering,trigger1,trigger2],len_history)
+        # avg_sensors = compute_average(sensors_historical=sensors_historical,num_last_values=2)
+        # fig, ax = plt.subplots(ncols=len(sensors),figsize=(21,10))
+        # for idsensor,sensor in enumerate(sensors_historical[0]):
+        #     #print(sensor)
+        #     ax[idsensor].bar(0,sensor)
+        #     ax[idsensor].set_title("Sensor " + str(idsensor))
+        #     ax[idsensor].set_xlim([-1, 1])
+        #     ax[idsensor].set_ylim([-1, 1])
+        #     ax[idsensor].hlines(avg_sensors[idsensor],-1,1,colors="C1")
 
-        plt.show()
+        # plt.show()
     except:
         #print("error")
         pass
