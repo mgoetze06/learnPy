@@ -88,17 +88,29 @@ sum_sensor = 0
 
 #mythread = Thread(target=handle_visuals_thread, args=())
 #mythread.start()
-
-
-try:
-    for i in range(50):
-        raw_data = ser.readline()
-        stripped_data = raw_data.decode().strip()
-        sum_sensor = sum_sensor + decodeString(5, stripped_data)[0]
-    zero_sensor = sum_sensor/50
-    print(zero_sensor)
-except:
-    pass
+def zero_sensor(sensor_num_in_array):
+    zero_sensor = 0
+    sum_sensor = 0
+    try:
+        for i in range(50):
+            raw_data = ser.readline()
+            stripped_data = raw_data.decode().strip()
+            sum_sensor = sum_sensor + decodeString(5, stripped_data)[sensor_num_in_array]
+        zero_sensor = int(sum_sensor/50)
+    except:
+        pass
+    return zero_sensor
+zero_sensors = [zero_sensor(0),zero_sensor(1)]
+print(zero_sensors)
+#exit(0)
+#     for i in range(50):
+#         raw_data = ser.readline()
+#         stripped_data = raw_data.decode().strip()
+#         sum_sensor = sum_sensor + decodeString(5, stripped_data)[0]
+#     zero_sensor = sum_sensor/50
+#     print(zero_sensor)
+# except:
+#     pass
 
 #exit(0)
 while True:
@@ -110,19 +122,27 @@ while True:
         #new_gamepad_x_float = rotary / 3000
         #print(new_gamepad_x_float)
         sensors = decodeString(5,stripped_data)
-        print(sensors)
+        #print(sensors)
         #sensors_historical = compute_array_sensors(sensors_historical,sensors,len_history)
 
         sensor0 = sensors[0]
-        if sensor0 > zero_sensor + 10:
-            sensor0 = numpy.interp(sensor0, [zero_sensor, 800], [0, 1])
+        sensor1 = sensors[1]
+        dead_zone = 0.03
+        if sensor0 > zero_sensors[0]+dead_zone:
+            sensor0 = numpy.interp(sensor0, [zero_sensors[0], 1023], [0, 1])
         else:
-            if sensor0 < zero_sensor - 1:
-                sensor0 = numpy.interp(sensor0, [0, zero_sensor], [-1, 0])
+            if sensor0 < zero_sensors[0]-dead_zone:
+                sensor0 = numpy.interp(sensor0, [0, zero_sensors[0]], [-1, 0])
             else:
                 sensor0 = 0
-
-        sensor1 = sensors[1]
+        if sensor1 > zero_sensors[1]+dead_zone:
+            sensor1 = numpy.interp(sensor1, [zero_sensors[1], 1023], [0, 1])
+        else:
+            if sensor1 < zero_sensors[1]-dead_zone:
+                sensor1 = numpy.interp(sensor1, [0, zero_sensors[1]], [-1, 0])
+            else:
+                sensor1 = 0
+        #
         steering = sensors[2] / 3000
         if steering > 1:
             steering = 1
@@ -130,17 +150,21 @@ while True:
             steering = -1
         trigger1 = sensors[3]
         trigger2 = sensors[4]
-        if trigger2 != 0:
-            sensor0 = 0
-        if trigger1 == 0:
+        #if trigger2 != 0:
+        #    sensor0 = 0
+        if trigger1 != 0:
             gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
         else:
             gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
+        #gamepad.update()
         gamepad.left_joystick_float(x_value_float=steering, y_value_float=sensor0)
         gamepad.update()
+        gamepad.right_joystick_float(x_value_float=sensor1, y_value_float=0)
+        gamepad.update()
+        print(sensor0,sensor1,steering,trigger1)
         # sensors_historical = compute_array_sensors(sensors_historical,[sensor0,sensor1,steering,trigger1,trigger2],len_history)
         # avg_sensors = compute_average(sensors_historical=sensors_historical,num_last_values=2)
-        # fig, ax = plt.subplots(ncols=len(sensors),figsize=(21,10))
+        # fig, ax = plt.subplots(ncols=len(sensors),figsize=(21,10))wwwwwwwwww
         # for idsensor,sensor in enumerate(sensors_historical[0]):
         #     #print(sensor)
         #     ax[idsensor].bar(0,sensor)
