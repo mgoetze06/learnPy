@@ -5,9 +5,41 @@ import time
 import numpy
 import matplotlib.pyplot as plt
 import numpy as np
+import termplotlib as tpl
+import os
 from threading import Thread, Event, Lock
 time.sleep(1)
 gamepad = vg.VX360Gamepad()
+def cls():
+    os.system('cls' if os.name=='nt' else 'clear')
+def draw_sensors_on_console(sensors):
+    
+    cls()
+    for i in range(len(sensors)):
+        print(i,sensors[i])
+
+    #fig, ax = plt.subplots(ncols=len(sensors),figsize=(21,10))wwwwwwwwww
+    # for idsensor,sensor in enumerate(sensors_historical[0]):
+    #     #print(sensor)
+    #     ax[idsensor].bar(0,sensor)
+    #     ax[idsensor].set_title("Sensor " + str(idsensor))
+    #     ax[idsensor].set_xlim([-1, 1])
+    #     ax[idsensor].set_ylim([-1, 1])
+    #     ax[idsensor].hlines(avg_sensors[idsensor],-1,1,colors="C1")
+
+    # plt.show()
+    #import numpy as np
+
+    #x = np.linspace(0, 2*np.pi, 100)
+    #y = np.sin(x) + x
+    #fig = tpl.figure()
+    #fig.plot(x, y, width=60, height=20)
+    #fig.set_xlim([-1, 1])
+    #fig.set_ylim([-1, 1])
+    #fig.barh(np.abs(sensors), force_ascii=True)
+    #fig.show()
+
+
 
 
 def compute_average(sensors_historical,num_last_values):
@@ -134,89 +166,78 @@ print(zero_sensors)
 
 while True:
     raw_data = ser.readline()
-    #try:
+    try:
         
-    stripped_data = raw_data.decode().strip()
+        stripped_data = raw_data.decode().strip()
 
-    sensors = decodeString(7,stripped_data)
+        sensors = decodeString(7,stripped_data)
 
-    sensor0 = sensors[0]
-    sensor1 = sensors[1]
-    dead_zone = 0.03
-    if sensor0 > zero_sensors[0]+dead_zone:
-        sensor0 = numpy.interp(sensor0, [zero_sensors[0], 1023], [0, 1])
-    else:
-        if sensor0 < zero_sensors[0]-dead_zone:
-            sensor0 = numpy.interp(sensor0, [0, zero_sensors[0]], [-1, 0])
+        sensor0 = sensors[0]
+        sensor1 = sensors[1]
+        dead_zone = 0.03
+        if sensor0 > zero_sensors[0]+dead_zone:
+            sensor0 = numpy.interp(sensor0, [zero_sensors[0], 1023], [0, 1])
         else:
-            sensor0 = 0
-    if sensor1 > zero_sensors[1]+dead_zone:
-        sensor1 = numpy.interp(sensor1, [zero_sensors[1], 1023], [0, 1])
-    else:
-        if sensor1 < zero_sensors[1]-dead_zone:
-            sensor1 = numpy.interp(sensor1, [0, zero_sensors[1]], [-1, 0])
+            if sensor0 < zero_sensors[0]-dead_zone:
+                sensor0 = numpy.interp(sensor0, [0, zero_sensors[0]], [-1, 0])
+            else:
+                sensor0 = 0
+        if sensor1 > zero_sensors[1]+dead_zone:
+            sensor1 = numpy.interp(sensor1, [zero_sensors[1], 1023], [0, 1])
         else:
-            sensor1 = 0
-    #
-    steering = sensors[2] / 3000
-    if steering > 1:
-        steering = 1
-    if steering < -1:
-        steering = -1
-    trigger1 = sensors[3]
-    trigger2 = sensors[4]
-    trigger3 = sensors[5]
-    trigger4 = sensors[6]
-    #trigger5 = sensors[7]
-    
-    triggers = sensors[3:7] #for normal push button use of the gamepaftriggers variable contains raw information from sensor (for a normal button push it creates 7-30 impulses)
-    #                           for normal push button use of the gamepad this is the preferred variable
-    #                           if you want to have just the simple impulse, use the varibale triggers_debounced, which sends the impuls if the trigger gets debounced and still holds the value
-    triggers_counter,triggers_debounced = debounce_trigger(triggers_last,triggers,triggers_counter,8)
-    print(sensors[0:2],round(steering,2),triggers,triggers_counter,triggers_debounced)
-    triggers_last = triggers
+            if sensor1 < zero_sensors[1]-dead_zone:
+                sensor1 = numpy.interp(sensor1, [0, zero_sensors[1]], [-1, 0])
+            else:
+                sensor1 = 0
+        #
+        steering = sensors[2] / 3000
+        if steering > 1:
+            steering = 1
+        if steering < -1:
+            steering = -1
+        trigger1 = sensors[3]
+        trigger2 = sensors[4]
+        trigger3 = sensors[5]
+        trigger4 = sensors[6]
+        #trigger5 = sensors[7]
+        
+        triggers = sensors[3:7] #for normal push button use of the gamepaftriggers variable contains raw information from sensor (for a normal button push it creates 7-30 impulses)
+        #                           for normal push button use of the gamepad this is the preferred variable
+        #                           if you want to have just the simple impulse, use the varibale triggers_debounced, which sends the impuls if the trigger gets debounced and still holds the value
+        triggers_counter,triggers_debounced = debounce_trigger(triggers_last,triggers,triggers_counter,8)
+        print(sensors[0:2],round(steering,2),triggers,triggers_counter,triggers_debounced)
+        triggers_last = triggers
 
-    if triggers[0] != 1:
-        gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
-    else:
-        gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
-    if triggers[1] != 1:
-        gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_B)
-    else:
-        gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_B)
-    if triggers[2] == 1: # ---> trigger[2] is not used for gamepad mode but for switching between joystick mode "driving" and "bale loading"
-        gamepad.left_joystick_float(x_value_float=steering, y_value_float=sensor0)
-        gamepad.right_joystick_float(x_value_float=0, y_value_float=0)
-        saved_sensors = [sensor0,sensor1]
-    else:
-        gamepad.left_joystick_float(x_value_float=steering, y_value_float=saved_sensors[0])
-        gamepad.right_joystick_float(x_value_float=sensor0, y_value_float=sensor1)
-    if triggers[3] != 1:
-        gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_UP)
-    else:
-        gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_UP)       
-    #gamepad.update()
-    
-    gamepad.update()
-    
-    gamepad.update()
-    #print(sensor0,sensor1,steering,trigger1,trigger2,trigger3,trigger4,trigger5)
-    #print(sensor0,sensor1,steering,triggers_debounced)
-    # sensors_historical = compute_array_sensors(sensors_historical,[sensor0,sensor1,steering,trigger1,trigger2],len_history)
-    # avg_sensors = compute_average(sensors_historical=sensors_historical,num_last_values=2)
-    # fig, ax = plt.subplots(ncols=len(sensors),figsize=(21,10))wwwwwwwwww
-    # for idsensor,sensor in enumerate(sensors_historical[0]):
-    #     #print(sensor)
-    #     ax[idsensor].bar(0,sensor)
-    #     ax[idsensor].set_title("Sensor " + str(idsensor))
-    #     ax[idsensor].set_xlim([-1, 1])
-    #     ax[idsensor].set_ylim([-1, 1])
-    #     ax[idsensor].hlines(avg_sensors[idsensor],-1,1,colors="C1")
+        if triggers[0] != 1:
+            gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
+        else:
+            gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_A)
+        if triggers[1] != 1:
+            gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_B)
+        else:
+            gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_B)
+        if triggers[2] == 1: # ---> trigger[2] is not used for gamepad mode but for switching between joystick mode "driving" and "bale loading"
+            gamepad.left_joystick_float(x_value_float=steering, y_value_float=sensor0)
+            gamepad.right_joystick_float(x_value_float=0, y_value_float=0)
+            saved_sensors = [sensor0,sensor1]
+        else:
+            gamepad.left_joystick_float(x_value_float=steering, y_value_float=saved_sensors[0])
+            gamepad.right_joystick_float(x_value_float=sensor0, y_value_float=sensor1)
+        if triggers[3] != 1:
+            gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_UP)
+        else:
+            gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_UP)       
+        #gamepad.update()
+        
+        gamepad.update()
 
-    # plt.show()
-#except:
-    #print("error")
-#    pass
+
+
+        #draw_sensors_on_console([sensor0,sensor1,steering,triggers[0],triggers[1],triggers[2],triggers[3]])
+        
+    except:
+        print("error")
+        pass
 
 
 
