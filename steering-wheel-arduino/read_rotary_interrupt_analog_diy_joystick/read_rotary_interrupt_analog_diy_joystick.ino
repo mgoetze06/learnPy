@@ -2,6 +2,8 @@
 #define encoderB 3
 #define trigger1_pin 4
 #define trigger2_pin 5
+#define trigger3_pin 6
+#define trigger4_pin 7
 
 volatile int counter = 0; 
 volatile int last_counter = 0; 
@@ -18,12 +20,16 @@ int sensorValue = 0;
 int sensorValue2 = 0;
 int trigger1 = 0;
 int trigger2 = 0;
+int trigger3 = 0;
+int trigger4 = 0;
 
  void setup() { 
    pinMode (encoderA,INPUT);
    pinMode (encoderB,INPUT);
    pinMode (trigger1_pin,INPUT_PULLUP);
    pinMode (trigger2_pin,INPUT_PULLUP);
+   pinMode (trigger3_pin,INPUT_PULLUP);
+   pinMode (trigger4_pin,INPUT_PULLUP);
    //pinMode (button4,INPUT_PULLUP);
    
    Serial.begin (115200);
@@ -44,7 +50,7 @@ int trigger2 = 0;
    if (last_counter == counter){
      zero_detection++;
    }
-  if ((zero_detection > 50) && (counter < 330) && (counter > -330)){
+  if ((zero_detection > 200) && (counter < 315) && (counter > -315)){
      zero_detection = 0;
      counter = 0;
      last_counter = 0;
@@ -62,7 +68,13 @@ int trigger2 = 0;
     Serial.print(trigger1);
     trigger2 = digitalRead(trigger2_pin);
     Serial.print("S5:");
-    Serial.println(trigger2);
+    Serial.print(trigger2);
+    trigger3 = digitalRead(trigger3_pin);
+    Serial.print("S6:");
+    Serial.print(trigger3);
+    trigger4 = digitalRead(trigger4_pin);
+    Serial.print("S7:");
+    Serial.println(trigger4);
     delay(8);
  }
 void pin_ISR() {
