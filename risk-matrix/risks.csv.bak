@@ -1,0 +1,18 @@
+id,name,x,y
+1,RSA Key Length,1,9
+2,Keine Firewall,4,8
+3,Keine VLANs,2,7
+4,kein HTTPS,5,8.5
+5,Platzhalter,5,8
+6,Platzhalter,1,1
+7,Platzhalter,2,3
+8,Platzhalter,3,2
+9,Platzhalter,4,3
+10,PlatzhalterS,7,7
+11,Platzhalter,5,5
+12,Platzhalter,9,9
+8,Platzhalter,3,2
+9,Platzhalter,4,3
+10,PlatzhalterS,7,7
+11,Platzhalter,5,5
+12,Platzhalter,9,9
