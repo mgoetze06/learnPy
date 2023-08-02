@@ -1,5 +1,5 @@
 import serial
-ser = serial.Serial('COM5', 115200, timeout=1)
+
 import vgamepad as vg
 import time
 import numpy
@@ -8,6 +8,36 @@ import numpy as np
 import termplotlib as tpl
 import os
 from threading import Thread, Event, Lock
+import serial.tools.list_ports
+ 
+print(serial.tools.list_ports.comports())
+ports = list(serial.tools.list_ports.comports())
+port_count= 0
+for p in ports:
+    port_count += 1
+    print (p)
+
+if port_count > 1:
+    port = input("multiple Ports detected, please enter port:")
+else:
+    if port_count == 0:
+        print("no COM ports detected, exiting")
+        exit
+    else:
+        print("only one port detected, selecting this one:")
+        port = ports[0]
+
+print(port)
+#print(dir(port))
+#print(port.interface)
+print(port.device)
+#ser = serial.Serial('COM5', 115200, timeout=1)
+ser = serial.Serial(port.device, 115200, timeout=1)
+
+
+
+
+
 time.sleep(1)
 gamepad = vg.VX360Gamepad()
 def cls():
