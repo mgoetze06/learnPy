@@ -169,8 +169,8 @@ len_history = 2
 sensors_historical = [ [] for _ in range(len_history) ]
 sensor0 = sensor1 = trigger1 = trigger2 = trigger3 = trigger4 = trigger5 = steering = 0
 sum_sensor = 0
-triggers_counter = [0,0,0,0]
-triggers_last = [1,1,1,1]
+triggers_counter = [0,0,0,0,0,0,0,0,0,0]
+triggers_last = [1,1,1,1,1,1,1,1,1,1]
 triggers = []
 saved_sensors = [0,0]
 
@@ -200,7 +200,7 @@ while True:
         
         stripped_data = raw_data.decode().strip()
 
-        sensors = decodeString(7,stripped_data)
+        sensors = decodeString(13,stripped_data)
 
         sensor0 = sensors[0]
         sensor1 = sensors[1]
@@ -225,13 +225,8 @@ while True:
             steering = 1
         if steering < -1:
             steering = -1
-        trigger1 = sensors[3]
-        trigger2 = sensors[4]
-        trigger3 = sensors[5]
-        trigger4 = sensors[6]
-        #trigger5 = sensors[7]
         
-        triggers = sensors[3:7] #for normal push button use of the gamepaftriggers variable contains raw information from sensor (for a normal button push it creates 7-30 impulses)
+        triggers = sensors[3:12] #for normal push button use of the gamepaftriggers variable contains raw information from sensor (for a normal button push it creates 7-30 impulses)
         #                           for normal push button use of the gamepad this is the preferred variable
         #                           if you want to have just the simple impulse, use the varibale triggers_debounced, which sends the impuls if the trigger gets debounced and still holds the value
         triggers_counter,triggers_debounced = debounce_trigger(triggers_last,triggers,triggers_counter,8)
@@ -257,8 +252,35 @@ while True:
             gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_UP)
         else:
             gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_UP)       
-        #gamepad.update()
-        
+        ####
+        if triggers[4] != 1:
+            gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_DOWN)
+        else:
+            gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_DOWN)   
+        if triggers[5] != 1:
+            gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_LEFT)
+        else:
+            gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_LEFT)   
+        if triggers[6] != 1:
+            gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_RIGHT)
+        else:
+            gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_DPAD_RIGHT)   
+        if triggers[7] != 1:
+            gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_SHOULDER)
+        else:
+            gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_SHOULDER)   
+        if triggers[8] != 1:
+            gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER)
+        else:
+            gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_SHOULDER)   
+        if triggers[9] != 1:
+            gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_THUMB)
+        else:
+            gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_LEFT_THUMB)   
+        if triggers[10] != 1:
+            gamepad.press_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_THUMB)
+        else:
+            gamepad.release_button(button=vg.XUSB_BUTTON.XUSB_GAMEPAD_RIGHT_THUMB)   
         gamepad.update()
 
 

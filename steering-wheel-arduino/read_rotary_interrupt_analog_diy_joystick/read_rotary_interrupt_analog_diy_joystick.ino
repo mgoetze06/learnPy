@@ -4,6 +4,12 @@
 #define trigger2_pin 5
 #define trigger3_pin 6
 #define trigger4_pin 7
+#define trigger5_pin 8
+#define trigger6_pin 9
+#define trigger7_pin 10
+#define trigger8_pin 11
+#define trigger9_pin 12
+#define trigger10_pin 13
 
 volatile int counter = 0; 
 volatile int last_counter = 0; 
@@ -22,6 +28,12 @@ int trigger1 = 0;
 int trigger2 = 0;
 int trigger3 = 0;
 int trigger4 = 0;
+int trigger5 = 0;
+int trigger6 = 0;
+int trigger7 = 0;
+int trigger8 = 0;
+int trigger9 = 0;
+int trigger10 = 0;
 
  void setup() { 
    pinMode (encoderA,INPUT);
@@ -30,6 +42,12 @@ int trigger4 = 0;
    pinMode (trigger2_pin,INPUT_PULLUP);
    pinMode (trigger3_pin,INPUT_PULLUP);
    pinMode (trigger4_pin,INPUT_PULLUP);
+   pinMode (trigger5_pin,INPUT_PULLUP);
+   pinMode (trigger6_pin,INPUT_PULLUP);
+   pinMode (trigger7_pin,INPUT_PULLUP);
+   pinMode (trigger8_pin,INPUT_PULLUP);
+   pinMode (trigger9_pin,INPUT_PULLUP);
+   pinMode (trigger10_pin,INPUT_PULLUP);
    //pinMode (button4,INPUT_PULLUP);
    
    Serial.begin (115200);
@@ -74,7 +92,25 @@ int trigger4 = 0;
     Serial.print(trigger3);
     trigger4 = digitalRead(trigger4_pin);
     Serial.print("S7:");
-    Serial.println(trigger4);
+    Serial.print(trigger4);
+    trigger5 = digitalRead(trigger5_pin);
+    Serial.print("S8:");
+    Serial.print(trigger5);
+    trigger6 = digitalRead(trigger6_pin);
+    Serial.print("S9:");
+    Serial.print(trigger6);
+    trigger7 = digitalRead(trigger7_pin);
+    Serial.print("S10:");
+    Serial.print(trigger7);
+    trigger8 = digitalRead(trigger8_pin);
+    Serial.print("S11:");
+    Serial.print(trigger8);
+    trigger9 = digitalRead(trigger9_pin);
+    Serial.print("S12:");
+    Serial.print(trigger9);
+    trigger10 = digitalRead(trigger10_pin);
+    Serial.print("S13:");
+    Serial.println(trigger10);
     delay(8);
  }
 void pin_ISR() {
