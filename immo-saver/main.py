@@ -11,6 +11,8 @@ CONST_INI_FILENAME = 'immo.json'
 CONST_ALTERNATIVE_INI_FILENAME = 'immos-template.json'
 
 
+CONST_WINDOW_WIDTH = 1920
+
 class MyApp(QWidget):
     def __init__(self):
         super().__init__()
@@ -19,11 +21,11 @@ class MyApp(QWidget):
         self.setWindowTitle('immo-saver')
 
         # Set the window size
-        self.resize(1920, 1080)
+        self.resize(CONST_WINDOW_WIDTH, 1080)
 
         # Create a QLabel to display selected property details
         self.label = QLabel('Select a property from the dropdown:', self)
-
+        self.label.setMaximumSize(CONST_WINDOW_WIDTH, 100)
         # Create a QLabel to display the image
         self.image_label = QLabel(self)
         #self.image_label.setFixedSize(400, 300)  # Set a fixed size for the image display
@@ -35,6 +37,7 @@ class MyApp(QWidget):
         # Create a QComboBox (Dropdown)
         self.dropdown = QComboBox(self)
         self.load_dropdown_data()  # Load data from JSON file
+        self.dropdown.currentTextChanged.connect(self.on_combobox_changed)
 
         # Set up the layout
         layout = QVBoxLayout()
@@ -67,6 +70,8 @@ class MyApp(QWidget):
             print("Error: JSON file not found.")
         except json.JSONDecodeError:
             print("Error: Invalid JSON format.")
+
+
 
     def on_button_clicked(self):
         """Handle button click event to display details and image of the selected property."""
@@ -105,6 +110,8 @@ class MyApp(QWidget):
             self.label.setText("No property selected.")
             self.image_label.clear()
 
+    def on_combobox_changed(self):
+        self.on_button_clicked()
 if __name__ == '__main__':
     # Create the application object
     app = QApplication(sys.argv)

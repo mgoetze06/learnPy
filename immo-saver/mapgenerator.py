@@ -93,13 +93,14 @@ def generateMap():
         popuphtml = popuphtml + "<img src='"+getTitleFilename(immo)+"'></a>"
 
         lat,lon = getLocation(immo)
-        marker = folium.Marker(
-                    location=(lat,lon),
-                    icon=folium.Icon(icon='home'),
-                    tooltip=getTitle(immo),
-                    popup=folium.Popup(popuphtml),
-                )
-        marker.add_to(map)
+        if lat:
+            marker = folium.Marker(
+                        location=(lat,lon),
+                        icon=folium.Icon(icon='home'),
+                        tooltip=getTitle(immo),
+                        popup=folium.Popup(popuphtml),
+                    )
+            marker.add_to(map)
 
     with open('arbeit.json', encoding='utf-8') as f:
         work = json.load(f)

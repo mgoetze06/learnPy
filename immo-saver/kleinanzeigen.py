@@ -5,7 +5,7 @@ from pprint import pprint
 import wget
 import os
 
-downloadImages = False
+downloadImages = True
 
 
 # Set the path to the Chromedriver
@@ -19,6 +19,8 @@ options.headless = True  # Enable headless mode for invisible operation
 driver = webdriver.Chrome(options=options)
 
 url = ''
+
+
 driver.get(url)
 
 #html = driver.page_source
@@ -60,6 +62,7 @@ for title in description:
     f.write(title.text)
     #print(title.text)
 f.close()
+
 titles = driver.find_elements(By.ID,'viewad-image')
 #print(titles.get_attribute('outerHTML'))
 if downloadImages:
@@ -81,5 +84,6 @@ if downloadImages:
     files = os.listdir(".")
     for path in files:
         if not os.path.splitext(path)[1]:
-            print(path)
-            os.rename(path, path+'.jpg')
+            if not os.path.isdir(path):
+                print(path)
+                os.rename(path, path+'.jpg')
