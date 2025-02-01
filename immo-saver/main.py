@@ -1,11 +1,13 @@
 import sys
 import json
-from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout, QPushButton, QComboBox
+from PyQt5.QtWidgets import QApplication, QWidget, QLabel, QVBoxLayout,QHBoxLayout,QPushButton, QComboBox
 from PyQt5.QtGui import QPixmap
 from PyQt5 import QtWebEngineWidgets
 import io
 
 from mapgenerator import generateMap,getFileExtension
+from kleinanzeigen import getInformationenFromKleinanzeigenURL
+
 
 CONST_INI_FILENAME = 'immo.json'
 CONST_ALTERNATIVE_INI_FILENAME = 'immos-template.json'
@@ -39,11 +41,14 @@ class MyApp(QWidget):
         self.load_dropdown_data()  # Load data from JSON file
         self.dropdown.currentTextChanged.connect(self.on_combobox_changed)
 
+        layoutH = QHBoxLayout()
+        layoutH.addWidget(self.dropdown)
+        layoutH.addWidget(self.button)
+
         # Set up the layout
         layout = QVBoxLayout()
         layout.addWidget(self.label)
-        layout.addWidget(self.dropdown)
-        layout.addWidget(self.button)
+        layout.addLayout(layoutH)
         layout.addWidget(self.image_label)
 
         m = generateMap()
