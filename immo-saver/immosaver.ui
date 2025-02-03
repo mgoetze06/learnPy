@@ -20,7 +20,7 @@
       <x>0</x>
       <y>0</y>
       <width>1431</width>
-      <height>691</height>
+      <height>772</height>
      </rect>
     </property>
     <layout class="QVBoxLayout" name="verticalLayout">
@@ -46,6 +46,24 @@
                  <width>500</width>
                  <height>0</height>
                 </size>
+               </property>
+              </widget>
+             </item>
+            </layout>
+           </item>
+           <item>
+            <layout class="QHBoxLayout" name="horizontalLayout_4">
+             <item>
+              <widget class="QTextEdit" name="textEdit">
+               <property name="placeholderText">
+                <string>Kleinanzeigen LINK</string>
+               </property>
+              </widget>
+             </item>
+             <item>
+              <widget class="QPushButton" name="pushButton_2">
+               <property name="text">
+                <string>Parse Kleinanzeigen Link</string>
                </property>
               </widget>
              </item>

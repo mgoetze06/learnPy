@@ -21,7 +21,7 @@ def write_json(new_data, filename='immo.json'):
         json.dump(new_data, file, indent=4)
 
 
-def updateImmos(newimmo):
+def updateImmos(newimmo,data):
     data["immos"].append(newimmo)
     return data
 
@@ -39,7 +39,7 @@ def saveAllImagesFromDriver(driver,immo_ID):
 
         dir = "Orte\ID_"+str(immo_ID)
         filename = str(filecount)+".jpg"
-        saveImageFromUrlToDirectory(url,filename,dir)
+        saveImageFromUrlToDirectory(imgsrc,filename,dir)
         wget.download(imgsrc)
     files = os.listdir(".")
     for path in files:
@@ -135,7 +135,7 @@ def getInformationenFromKleinanzeigenURL(url):
 
     driver = webdriver.Chrome(options=options)
 
-    url = 'https://www.kleinanzeigen.de/s-anzeige/renovierungsbeduerftig/2776025846-208-11843'
+    #url = 'https://www.kleinanzeigen.de/s-anzeige/renovierungsbeduerftig/2776025846-208-11843'
 
 
     with open('immo.json', encoding='utf-8') as f:
@@ -181,7 +181,7 @@ def getInformationenFromKleinanzeigenURL(url):
         "link": url
     }
 
-    data = updateImmos(newimmo=new_immo)
+    data = updateImmos(newimmo=new_immo,data=data)
     write_json(data)
 
 

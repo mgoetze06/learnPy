@@ -9,18 +9,7 @@
 
 
 from PyQt5 import QtCore, QtGui, QtWidgets
-import sys
-import json
-from PyQt5.QtWidgets import QLabel
-from PyQt5.QtGui import QPixmap
-from PyQt5 import QtWebEngineWidgets
-import io
 
-from mapgenerator import generateMap,getFileExtension
-from kleinanzeigen import getInformationenFromKleinanzeigenURL
-
-CONST_INI_FILENAME = 'immo.json'
-CONST_ALTERNATIVE_INI_FILENAME = 'immos-template.json'
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -29,7 +18,7 @@ class Ui_MainWindow(object):
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.verticalLayoutWidget = QtWidgets.QWidget(self.centralwidget)
-        self.verticalLayoutWidget.setGeometry(QtCore.QRect(0, 0, 1431, 691))
+        self.verticalLayoutWidget.setGeometry(QtCore.QRect(0, 0, 1431, 772))
         self.verticalLayoutWidget.setObjectName("verticalLayoutWidget")
         self.verticalLayout = QtWidgets.QVBoxLayout(self.verticalLayoutWidget)
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -68,19 +57,9 @@ class Ui_MainWindow(object):
         self.graphicsView = QtWidgets.QGraphicsView(self.verticalLayoutWidget)
         self.graphicsView.setObjectName("graphicsView")
         self.horizontalLayout_2.addWidget(self.graphicsView)
-        self.image_label = QtWidgets.QLabel(self.verticalLayoutWidget)
-        self.horizontalLayout_2.addWidget(self.image_label)
         self.verticalLayout.addLayout(self.horizontalLayout_2)
         self.label_2 = QtWidgets.QLabel(self.verticalLayoutWidget)
         self.label_2.setObjectName("label_2")
-        m = generateMap()
-
-        data = io.BytesIO()
-        m.save(data, close_file=False)
-        webengine= QtWebEngineWidgets.QWebEngineView()
-        webengine.setHtml(data.getvalue().decode())
-        webengine.resize(640, 480)
-        self.verticalLayout.addWidget(webengine)
         self.verticalLayout.addWidget(self.label_2)
         MainWindow.setCentralWidget(self.centralwidget)
         self.menubar = QtWidgets.QMenuBar(MainWindow)
@@ -94,12 +73,6 @@ class Ui_MainWindow(object):
         self.retranslateUi(MainWindow)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
-
-        self.load_comboBox_data()  # Load data from JSON file
-        self.comboBox.currentTextChanged.connect(self.on_comboBox_changed)
-        self.pushButton.clicked.connect(self.on_button_clicked)
-        self.pushButton_2.clicked.connect(self.on_kleinanzeigen_button_parse_clicked)
-
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "ImmoSaver"))
@@ -109,68 +82,6 @@ class Ui_MainWindow(object):
         self.label.setText(_translate("MainWindow", "TextLabel"))
         self.label_2.setText(_translate("MainWindow", "Kartenansicht"))
 
-    def load_comboBox_data(self):
-        """Load data from the JSON file and populate the dropdown with property titles."""
-        try:
-            with open(CONST_INI_FILENAME, 'r', encoding='utf-8') as file:
-                data = json.load(file)
-                immos = data.get('immos', [])
-                for immo in immos:
-                    self.comboBox.addItem(immo['title'], immo)  # Add title to dropdown and store the full object as userData
-        except FileNotFoundError:
-            print("Error: JSON file not found.")
-        except json.JSONDecodeError:
-            print("Error: Invalid JSON format.")
-
-
-
-    def on_button_clicked(self):
-        """Handle button click event to display details and image of the selected property."""
-        selected_index = self.comboBox.currentIndex()
-        selected_immo = self.comboBox.itemData(selected_index)  # Retrieve the full object associated with the selected title
-
-        if selected_immo:
-            # Display property details
-            details = (
-                f"Title: {selected_immo['title']}\n"
-                f"Price: {selected_immo['price']} €\n"
-                f"City: {selected_immo['city']}\n"
-                f"Address: {selected_immo['address']}\n"
-                f"Living Area: {selected_immo['livingarea']} m²\n"
-                f"Property Area: {selected_immo['propertyarea']} m²\n"
-                f"Construction Year: {selected_immo['constructionyear']}\n"
-                f"Description: {selected_immo['description']}\n"
-                f"Link: {selected_immo['link']}"
-            )
-            self.label.setText(details)
-
-            # Load and display the image
-            image_path = f"static/images/.jpg"
-
-            filename = f"title_{selected_immo['id']}"
-            extension = getFileExtension(filename)
-            image_path = "static/images/"+filename+extension
-            pixmap = QPixmap(image_path)
-            if not pixmap.isNull():
-                #self.image_label.setPixmap(pixmap.scaled(self.image_label.size()))
-                self.image_label.setPixmap(pixmap)
-
-            else:
-                self.image_label.setText("Image not found.")
-        else:
-            self.label.setText("No property selected.")
-            self.image_label.clear()
-
-    def on_comboBox_changed(self):
-        self.on_button_clicked()
-
-    def on_kleinanzeigen_button_parse_clicked(self):
-        url = self.textEdit.toPlainText()
-        if url:
-            getInformationenFromKleinanzeigenURL(url)
-
-        else:
-            self.textEdit.setPlaceholderText("Bitte URL der Kleinanzeige eingeben!")
 
 if __name__ == "__main__":
     import sys
