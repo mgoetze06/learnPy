@@ -5,6 +5,15 @@ import folium
 import json
 import os
 
+def parseGoogleMapsLinkToLatLon(url):
+    if url == None:
+        return None,None
+    
+    lat = 51.5969943
+    lon = 12.3482471
+
+    return lat,lon
+
 def getMapCenter():
     lat = 51.5969943
     lon = 12.3482471
@@ -53,7 +62,10 @@ def getTitleFilename(immo):
 
     filename = "title_"+id
     extension = getFileExtension(filename)
-    file = "static/images/"+filename+extension
+    if extension == None:
+        file = "static/images/title_None.jpg"
+    else:
+        file = "static/images/"+filename+extension
     print(file)
     return file
 
@@ -62,6 +74,8 @@ def getFileExtension(filename):
     for path in files:
         if filename in path:
             return os.path.splitext(path)[1]
+        
+    return None
 
 def generateAndSaveMap():
     map = generateMap()

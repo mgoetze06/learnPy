@@ -52,6 +52,9 @@ def saveAllImagesFromDriver(driver,immo_ID):
                 filecount += 1
     
 def saveImageFromUrlToDirectory(url,filename,directory=None):
+    if url == None:
+        print("saveImageFromUrlToDirectory: no url supplied")
+        return
     if directory:
         if not os.path.exists(directory):
             os.makedirs(directory)
@@ -121,7 +124,7 @@ def getSizesAndYearFromDriver(driver):
         if "Wohnfläche" in text:
             wohnen = text.split("\n")[1].split(" m")[0]
         if "Grund" in text:
-            grund = text.split("\n")[1].split(" m")[0]
+            grund = text.split("\n")[1].split(" m")[0].replace(".","")
         if "jahr" in text:
             jahr = text.split("\n")[1]
 

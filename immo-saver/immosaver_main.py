@@ -16,11 +16,13 @@ from PyQt5.QtGui import QPixmap
 from PyQt5 import QtWebEngineWidgets
 import io
 
-from mapgenerator import generateMap,getFileExtension
+from mapgenerator import generateMap,getFileExtension,parseGoogleMapsLinkToLatLon,getTitleFilename
 from kleinanzeigen import getInformationenFromKleinanzeigenURL
 
 CONST_INI_FILENAME = 'immo.json'
 CONST_ALTERNATIVE_INI_FILENAME = 'immos-template.json'
+
+selected_immo = None
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -29,7 +31,7 @@ class Ui_MainWindow(object):
         self.centralwidget = QtWidgets.QWidget(MainWindow)
         self.centralwidget.setObjectName("centralwidget")
         self.verticalLayoutWidget = QtWidgets.QWidget(self.centralwidget)
-        self.verticalLayoutWidget.setGeometry(QtCore.QRect(0, 0, 1431, 691))
+        self.verticalLayoutWidget.setGeometry(QtCore.QRect(0, 0, 1431, 872))
         self.verticalLayoutWidget.setObjectName("verticalLayoutWidget")
         self.verticalLayout = QtWidgets.QVBoxLayout(self.verticalLayoutWidget)
         self.verticalLayout.setContentsMargins(0, 0, 0, 0)
@@ -49,16 +51,23 @@ class Ui_MainWindow(object):
         self.comboBox.setMinimumSize(QtCore.QSize(500, 0))
         self.comboBox.setObjectName("comboBox")
         self.horizontalLayout_3.addWidget(self.comboBox)
+        self.label_3 = QtWidgets.QLabel(self.verticalLayoutWidget)
+        self.label_3.setMaximumSize(QtCore.QSize(100, 16777215))
+        self.label_3.setObjectName("label_3")
+        self.horizontalLayout_3.addWidget(self.label_3)
         self.verticalLayout_2.addLayout(self.horizontalLayout_3)
         self.horizontalLayout_4 = QtWidgets.QHBoxLayout()
         self.horizontalLayout_4.setObjectName("horizontalLayout_4")
         self.textEdit = QtWidgets.QTextEdit(self.verticalLayoutWidget)
         self.textEdit.setObjectName("textEdit")
         self.horizontalLayout_4.addWidget(self.textEdit)
+        self.verticalLayout_2.addLayout(self.horizontalLayout_4)
         self.pushButton_2 = QtWidgets.QPushButton(self.verticalLayoutWidget)
         self.pushButton_2.setObjectName("pushButton_2")
-        self.horizontalLayout_4.addWidget(self.pushButton_2)
-        self.verticalLayout_2.addLayout(self.horizontalLayout_4)
+        self.verticalLayout_2.addWidget(self.pushButton_2)
+        self.pushButton_3 = QtWidgets.QPushButton(self.verticalLayoutWidget)
+        self.pushButton_3.setObjectName("pushButton_3")
+        self.verticalLayout_2.addWidget(self.pushButton_3)
         self.label = QtWidgets.QLabel(self.verticalLayoutWidget)
         self.label.setMinimumSize(QtCore.QSize(0, 600))
         self.label.setObjectName("label")
@@ -99,13 +108,15 @@ class Ui_MainWindow(object):
         self.comboBox.currentTextChanged.connect(self.on_comboBox_changed)
         self.pushButton.clicked.connect(self.on_button_clicked)
         self.pushButton_2.clicked.connect(self.on_kleinanzeigen_button_parse_clicked)
+        self.pushButton_3.clicked.connect(self.on_LatLonButton_clicked)
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
         MainWindow.setWindowTitle(_translate("MainWindow", "ImmoSaver"))
         self.pushButton.setText(_translate("MainWindow", "PushButton"))
-        self.textEdit.setPlaceholderText(_translate("MainWindow", "Kleinanzeigen LINK"))
+        self.textEdit.setPlaceholderText(_translate("MainWindow", "LINK"))
         self.pushButton_2.setText(_translate("MainWindow", "Parse Kleinanzeigen Link"))
+        self.pushButton_3.setText(_translate("MainWindow", "Add LatLon to Immo"))
         self.label.setText(_translate("MainWindow", "TextLabel"))
         self.label_2.setText(_translate("MainWindow", "Kartenansicht"))
 
@@ -122,9 +133,22 @@ class Ui_MainWindow(object):
         except json.JSONDecodeError:
             print("Error: Invalid JSON format.")
 
+    def on_LatLonButton_clicked(self):
+        if not selected_immo:
+            print("no immo selected")
+            return
+        url = self.textEdit.toPlainText()
+        if url and "google" in url and not "kleinanzeigen" in url:
+            lat,lon = parseGoogleMapsLinkToLatLon(url)
 
+            if lat and lon:
+                selected_immo['lat'] = lat
+                selected_immo['lon'] = lon
+                print(selected_immo)
+        
 
     def on_button_clicked(self):
+        global selected_immo
         """Handle button click event to display details and image of the selected property."""
         selected_index = self.comboBox.currentIndex()
         selected_immo = self.comboBox.itemData(selected_index)  # Retrieve the full object associated with the selected title
@@ -143,13 +167,11 @@ class Ui_MainWindow(object):
                 f"Link: {selected_immo['link']}"
             )
             self.label.setText(details)
-
+            self.label_3.setText("ID: "+ str(selected_immo["id"]))
             # Load and display the image
             image_path = f"static/images/.jpg"
 
-            filename = f"title_{selected_immo['id']}"
-            extension = getFileExtension(filename)
-            image_path = "static/images/"+filename+extension
+            image_path = getTitleFilename(selected_immo)
             pixmap = QPixmap(image_path)
             if not pixmap.isNull():
                 #self.image_label.setPixmap(pixmap.scaled(self.image_label.size()))
