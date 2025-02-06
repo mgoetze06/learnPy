@@ -27,74 +27,32 @@
      <item>
       <layout class="QHBoxLayout" name="horizontalLayout_2">
        <item>
-        <layout class="QHBoxLayout" name="horizontalLayout">
+        <layout class="QVBoxLayout" name="verticalLayout_2">
          <item>
-          <layout class="QVBoxLayout" name="verticalLayout_2">
+          <layout class="QHBoxLayout" name="horizontalLayout_3">
            <item>
-            <layout class="QHBoxLayout" name="horizontalLayout_3">
-             <item>
-              <widget class="QPushButton" name="pushButton">
-               <property name="text">
-                <string>PushButton</string>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QComboBox" name="comboBox">
-               <property name="minimumSize">
-                <size>
-                 <width>500</width>
-                 <height>0</height>
-                </size>
-               </property>
-              </widget>
-             </item>
-             <item>
-              <widget class="QLabel" name="label_3">
-               <property name="maximumSize">
-                <size>
-                 <width>100</width>
-                 <height>16777215</height>
-                </size>
-               </property>
-               <property name="text">
-                <string>TextLabel</string>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-           <item>
-            <layout class="QHBoxLayout" name="horizontalLayout_4">
-             <item>
-              <widget class="QTextEdit" name="textEdit">
-               <property name="placeholderText">
-                <string>LINK</string>
-               </property>
-              </widget>
-             </item>
-            </layout>
-           </item>
-           <item>
-            <widget class="QPushButton" name="pushButton_2">
+            <widget class="QPushButton" name="pushButton">
              <property name="text">
-              <string>Parse Kleinanzeigen Link</string>
+              <string>PushButton</string>
              </property>
             </widget>
            </item>
            <item>
-            <widget class="QPushButton" name="pushButton_3">
-             <property name="text">
-              <string>Add LatLon to Immo</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QLabel" name="label">
+            <widget class="QComboBox" name="comboBox">
              <property name="minimumSize">
               <size>
-               <width>0</width>
-               <height>600</height>
+               <width>500</width>
+               <height>0</height>
+              </size>
+             </property>
+            </widget>
+           </item>
+           <item>
+            <widget class="QLabel" name="label_3">
+             <property name="maximumSize">
+              <size>
+               <width>100</width>
+               <height>16777215</height>
               </size>
              </property>
              <property name="text">
@@ -104,10 +62,41 @@
            </item>
           </layout>
          </item>
+         <item>
+          <widget class="QTextEdit" name="textEdit">
+           <property name="placeholderText">
+            <string>LINK</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton_2">
+           <property name="text">
+            <string>Parse Kleinanzeigen Link</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QPushButton" name="pushButton_3">
+           <property name="text">
+            <string>Add LatLon to Immo</string>
+           </property>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="label">
+           <property name="minimumSize">
+            <size>
+             <width>0</width>
+             <height>600</height>
+            </size>
+           </property>
+           <property name="text">
+            <string>TextLabel</string>
+           </property>
+          </widget>
+         </item>
         </layout>
-       </item>
-       <item>
-        <widget class="QGraphicsView" name="graphicsView"/>
        </item>
       </layout>
      </item>
