@@ -14,12 +14,23 @@ DRIVER_PATH = "C:\Program Files\Google\Chrome\Application\chrome.exe"
 
 def write_json(new_data, filename='immo.json'):
     # Print the updated JSON data
-    print(json.dumps(new_data, indent=4))
+    #print(json.dumps(new_data, indent=4))
 
     # Optionally, save the updated JSON to a file
     with open(filename, "w") as file:
         json.dump(new_data, file, indent=4)
+        print("JSON updated")
 
+def updateImmoByID(newimmo,data):
+    for immo in data["immos"]:
+        if immo["id"] == newimmo["id"]:
+            immo = newimmo
+            print("immo updated")
+            print(immo["id"])
+            data["immos"][int(immo["id"])] = newimmo
+            break
+    print(data["immos"][int(immo["id"])])
+    return data
 
 def updateImmos(newimmo,data):
     data["immos"].append(newimmo)

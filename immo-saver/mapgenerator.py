@@ -4,13 +4,27 @@ import numpy as np
 import folium
 import json
 import os
+from urllib.parse import urlparse
 
 def parseGoogleMapsLinkToLatLon(url):
     if url == None:
         return None,None
     
-    lat = 51.5969943
-    lon = 12.3482471
+    # Extract the path from the URL
+    parsed_url = urlparse(url)
+    path = parsed_url.path  # This will give '/maps/@51.4886157,12.5599667,40837m/data=!3m1!1e3'
+
+    # Split the path to get the coordinates
+    coordinates_part = path.split('@')[1]  # This will give '51.4886157,12.5599667,40837m/data=!3m1!1e3'
+    coordinates = coordinates_part.split(',')  # Split by comma
+
+    # Extract latitude and longitude
+    lat = float(coordinates[0])  # Latitude
+    lon = float(coordinates[1])  # Longitude
+
+    # Print the results
+    print(f"Latitude: {lat}")
+    print(f"Longitude: {lon}")
 
     return lat,lon
 

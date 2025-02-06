@@ -17,12 +17,13 @@ from PyQt5 import QtWebEngineWidgets
 import io
 
 from mapgenerator import generateMap,getFileExtension,parseGoogleMapsLinkToLatLon,getTitleFilename
-from kleinanzeigen import getInformationenFromKleinanzeigenURL
+from kleinanzeigen import getInformationenFromKleinanzeigenURL,updateImmoByID,write_json
 
 CONST_INI_FILENAME = 'immo.json'
 CONST_ALTERNATIVE_INI_FILENAME = 'immos-template.json'
 
 selected_immo = None
+data = None
 
 class Ui_MainWindow(object):
     def setupUi(self, MainWindow):
@@ -69,6 +70,33 @@ class Ui_MainWindow(object):
         self.label.setMinimumSize(QtCore.QSize(0, 600))
         self.label.setObjectName("label")
         self.verticalLayout_2.addWidget(self.label)
+        self.label_6 = QtWidgets.QLabel(self.verticalLayoutWidget)
+        self.label_6.setObjectName("label_6")
+        self.verticalLayout_2.addWidget(self.label_6)
+        self.lcdNumber = QtWidgets.QLCDNumber(self.verticalLayoutWidget)
+        font = QtGui.QFont()
+        font.setPointSize(36)
+        font.setBold(True)
+        font.setWeight(75)
+        self.lcdNumber.setFont(font)
+        self.lcdNumber.setObjectName("lcdNumber")
+        self.verticalLayout_2.addWidget(self.lcdNumber)
+        self.label_4 = QtWidgets.QLabel(self.verticalLayoutWidget)
+        self.label_4.setObjectName("label_4")
+        self.verticalLayout_2.addWidget(self.label_4)
+        self.horizontalSlider = QtWidgets.QSlider(self.verticalLayoutWidget)
+        self.horizontalSlider.setMaximum(10)
+        self.horizontalSlider.setOrientation(QtCore.Qt.Horizontal)
+        self.horizontalSlider.setObjectName("horizontalSlider")
+        self.verticalLayout_2.addWidget(self.horizontalSlider)
+        self.label_5 = QtWidgets.QLabel(self.verticalLayoutWidget)
+        self.label_5.setObjectName("label_5")
+        self.verticalLayout_2.addWidget(self.label_5)
+        self.horizontalSlider_2 = QtWidgets.QSlider(self.verticalLayoutWidget)
+        self.horizontalSlider_2.setMaximum(10)
+        self.horizontalSlider_2.setOrientation(QtCore.Qt.Horizontal)
+        self.horizontalSlider_2.setObjectName("horizontalSlider_2")
+        self.verticalLayout_2.addWidget(self.horizontalSlider_2)
         self.horizontalLayout_2.addLayout(self.verticalLayout_2)
         self.image_label = QtWidgets.QLabel(self.verticalLayoutWidget)
         self.horizontalLayout_2.addWidget(self.image_label)
@@ -102,6 +130,9 @@ class Ui_MainWindow(object):
         self.pushButton.clicked.connect(self.on_button_clicked)
         self.pushButton_2.clicked.connect(self.on_kleinanzeigen_button_parse_clicked)
         self.pushButton_3.clicked.connect(self.on_LatLonButton_clicked)
+        self.horizontalSlider.valueChanged.connect(self.on_slider_change)
+        self.horizontalSlider_2.valueChanged.connect(self.on_slider_change)
+
 
     def retranslateUi(self, MainWindow):
         _translate = QtCore.QCoreApplication.translate
@@ -111,15 +142,20 @@ class Ui_MainWindow(object):
         self.pushButton_2.setText(_translate("MainWindow", "Parse Kleinanzeigen Link"))
         self.pushButton_3.setText(_translate("MainWindow", "Add LatLon to Immo"))
         self.label.setText(_translate("MainWindow", "TextLabel"))
+        self.label_6.setText(_translate("MainWindow", "Gesamtscore"))
+        self.label_4.setText(_translate("MainWindow", "Bewertung 1"))
+        self.label_5.setText(_translate("MainWindow", "Bewertung 2"))
         self.label_2.setText(_translate("MainWindow", "Kartenansicht"))
 
     def load_comboBox_data(self):
+        global data
+        data = None
         """Load data from the JSON file and populate the dropdown with property titles."""
         try:
             with open(CONST_INI_FILENAME, 'r', encoding='utf-8') as file:
                 data = json.load(file)
-                immos = data.get('immos', [])
-                for immo in immos:
+                #immos = data.get('immos', [])
+                for immo in data["immos"]:
                     self.comboBox.addItem(immo['title'], immo)  # Add title to dropdown and store the full object as userData
         except FileNotFoundError:
             print("Error: JSON file not found.")
@@ -127,8 +163,14 @@ class Ui_MainWindow(object):
             print("Error: Invalid JSON format.")
 
     def on_LatLonButton_clicked(self):
+        global data
         if not selected_immo:
             print("no immo selected")
+            return
+        
+        if selected_immo["lat"] != None:
+            return
+        if selected_immo["lon"] != None:
             return
         url = self.textEdit.toPlainText()
         if url and "google" in url and not "kleinanzeigen" in url:
@@ -137,8 +179,10 @@ class Ui_MainWindow(object):
             if lat and lon:
                 selected_immo['lat'] = lat
                 selected_immo['lon'] = lon
-                print(selected_immo)
-        
+                print("selected_immo: ",lat,lon)
+                data = updateImmoByID(selected_immo,data)
+                write_json(data)
+
 
     def on_button_clicked(self):
         global selected_immo
@@ -172,6 +216,8 @@ class Ui_MainWindow(object):
 
             else:
                 self.image_label.setText("Image not found.")
+
+            self.load_comboBox_data()
         else:
             self.label.setText("No property selected.")
             self.image_label.clear()
@@ -186,6 +232,13 @@ class Ui_MainWindow(object):
 
         else:
             self.textEdit.setPlaceholderText("Bitte URL der Kleinanzeige eingeben!")
+
+    def on_slider_change(self):
+        if selected_immo:
+            total_score = int(self.horizontalSlider.value()) + int(self.horizontalSlider_2.value())
+            self.lcdNumber.display(total_score)
+            #print("total_score",total_score)
+
 
 if __name__ == "__main__":
     import sys
