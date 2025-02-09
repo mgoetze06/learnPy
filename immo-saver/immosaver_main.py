@@ -15,9 +15,14 @@ from PyQt5.QtWidgets import QLabel
 from PyQt5.QtGui import QPixmap
 from PyQt5 import QtWebEngineWidgets
 import io
+import os
+import subprocess
+import webbrowser
 
-from mapgenerator import generateMap,getFileExtension,parseGoogleMapsLinkToLatLon,getTitleFilename
+
+from mapgenerator import generateMap,getFileExtension,parseGoogleMapsLinkToLatLon,getTitleFilename,getFileExtensionFromDir
 from kleinanzeigen import getInformationenFromKleinanzeigenURL,updateImmoByID,write_json
+from immobilienscout import getInformationenFromImmoscoutURL
 
 CONST_INI_FILENAME = 'immo.json'
 CONST_ALTERNATIVE_INI_FILENAME = 'immos-template.json'
@@ -63,9 +68,21 @@ class Ui_MainWindow(object):
         self.pushButton_2 = QtWidgets.QPushButton(self.verticalLayoutWidget)
         self.pushButton_2.setObjectName("pushButton_2")
         self.verticalLayout_2.addWidget(self.pushButton_2)
+        self.pushButton_4 = QtWidgets.QPushButton(self.verticalLayoutWidget)
+        self.pushButton_4.setObjectName("pushButton_4")
+        self.verticalLayout_2.addWidget(self.pushButton_4)
         self.pushButton_3 = QtWidgets.QPushButton(self.verticalLayoutWidget)
         self.pushButton_3.setObjectName("pushButton_3")
         self.verticalLayout_2.addWidget(self.pushButton_3)
+
+        self.pushButton_5 = QtWidgets.QPushButton(self.verticalLayoutWidget)
+        self.pushButton_5.setObjectName("pushButton_5")
+        self.verticalLayout_2.addWidget(self.pushButton_5)
+
+        self.pushButton_6 = QtWidgets.QPushButton(self.verticalLayoutWidget)
+        self.pushButton_6.setObjectName("pushButton_6")
+        self.verticalLayout_2.addWidget(self.pushButton_6)
+
         self.label = QtWidgets.QLabel(self.verticalLayoutWidget)
         self.label.setMinimumSize(QtCore.QSize(0, 600))
         self.label.setObjectName("label")
@@ -129,7 +146,11 @@ class Ui_MainWindow(object):
         self.comboBox.currentTextChanged.connect(self.on_comboBox_changed)
         self.pushButton.clicked.connect(self.on_button_clicked)
         self.pushButton_2.clicked.connect(self.on_kleinanzeigen_button_parse_clicked)
+        self.pushButton_4.clicked.connect(self.on_immoscout_button_parse_clicked)
         self.pushButton_3.clicked.connect(self.on_LatLonButton_clicked)
+        self.pushButton_5.clicked.connect(self.on_folder_open_click)
+        self.pushButton_6.clicked.connect(self.on_open_link)
+
         self.horizontalSlider.valueChanged.connect(self.on_slider_change)
         self.horizontalSlider_2.valueChanged.connect(self.on_slider_change)
 
@@ -141,6 +162,9 @@ class Ui_MainWindow(object):
         self.textEdit.setPlaceholderText(_translate("MainWindow", "LINK"))
         self.pushButton_2.setText(_translate("MainWindow", "Parse Kleinanzeigen Link"))
         self.pushButton_3.setText(_translate("MainWindow", "Add LatLon to Immo"))
+        self.pushButton_4.setText(_translate("MainWindow", "Parse Immoscout Link"))
+        self.pushButton_5.setText(_translate("MainWindow", "Öffne Bilder Ordner"))
+        self.pushButton_6.setText(_translate("MainWindow", "Öffne Link"))
         self.label.setText(_translate("MainWindow", "TextLabel"))
         self.label_6.setText(_translate("MainWindow", "Gesamtscore"))
         self.label_4.setText(_translate("MainWindow", "Bewertung 1"))
@@ -232,6 +256,35 @@ class Ui_MainWindow(object):
 
         else:
             self.textEdit.setPlaceholderText("Bitte URL der Kleinanzeige eingeben!")
+
+    def on_immoscout_button_parse_clicked(self):
+        url = self.textEdit.toPlainText()
+        if url:
+            getInformationenFromImmoscoutURL(url)
+
+        else:
+            self.textEdit.setPlaceholderText("Bitte URL von Immoscout eingeben!")
+
+    def on_folder_open_click(self):
+        if selected_immo:
+            immo_folder_path = os.path.join(os.getcwd(),"Orte")
+            id = "ID_" + str(selected_immo["id"])
+            immo_folder_path = os.path.join(immo_folder_path,id)
+
+            file = '0'
+            extension = getFileExtensionFromDir(file,immo_folder_path)
+
+            file = file + extension
+            immo_folder_path = os.path.join(immo_folder_path,file)
+            print("opening ",immo_folder_path)
+            subprocess.Popen(rf'explorer /select,{immo_folder_path}')
+    def on_open_link(self):
+        if selected_immo:
+            link = str(selected_immo["link"])
+            print("webbrowser ",link)
+
+            webbrowser.open(link, new=0, autoraise=True)
+
 
     def on_slider_change(self):
         if selected_immo:

@@ -91,6 +91,14 @@ def getFileExtension(filename):
         
     return None
 
+def getFileExtensionFromDir(filename,dir):
+    files = os.listdir(dir)
+    for path in files:
+        if filename in path:
+            return os.path.splitext(path)[1]
+        
+    return None
+
 def generateAndSaveMap():
     map = generateMap()
     map.save('templates/map.html')
