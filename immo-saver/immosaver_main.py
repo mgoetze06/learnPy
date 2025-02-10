@@ -241,7 +241,6 @@ class Ui_MainWindow(object):
             else:
                 self.image_label.setText("Image not found.")
 
-            self.load_comboBox_data()
         else:
             self.label.setText("No property selected.")
             self.image_label.clear()
