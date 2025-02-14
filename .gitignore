@@ -631,3 +631,6 @@ immo-saver/Orte/ID_9/19.jpg
 immo-saver/static/images/title_9.jpg
 immo-saver/Orte/ID_10/0.jpg
 immo-saver/Orte/
+immo-saver/__pycache__/immobilienscout.cpython-313.pyc
+immo-saver/__pycache__/kleinanzeigen.cpython-313.pyc
+immo-saver/__pycache__/mapgenerator.cpython-313.pyc
