@@ -2,7 +2,7 @@
 
 from flask import Flask, request
 from playsound import playsound
-import glob,os,random
+import glob,os,random, time
 
 app = Flask(__name__)
 
@@ -14,16 +14,19 @@ app = Flask(__name__)
 #delay based on score. Autodarts caller takes different amount of time to say different scores.
 #Saying 3 takes less time than saying 26 
 
+def combineCurrentDirWithScoreType(scoreType):
+    return os.path.join(os.getcwd(),scoreType)
 
-
-def getRandomSoundFile(folder,extension):
-
-    searchfolder = os.path.join(os.getcwd(),folder)
+def getFilesFromFolderWithExtension(folder,extension):
+    searchfolder = combineCurrentDirWithScoreType(folder)
     globExtensionString = "*"+ extension 
     searchLocation = os.path.join(searchfolder,globExtensionString)
     files = glob.glob(searchLocation)
-    if files:
+    return files, searchfolder
 
+def getRandomSoundFile(folder,extension):
+    files,searchfolder = getFilesFromFolderWithExtension(folder,extension)
+    if files:
         randomFile = random.sample(files, 1)[0]
         randomFileWithoutFolder = randomFile.replace(searchfolder,"")[1:]
         return randomFile,randomFileWithoutFolder
@@ -34,6 +37,19 @@ def playSoundFile(file):
         return
     playsound(file)
     return
+
+def getDelayMilliSecondsFromType(typeOfScore):
+    files,_ = getFilesFromFolderWithExtension(typeOfScore,"txt")
+    if files:
+        delayFile = files[0]
+        #read from file and store in delay
+
+    return 3
+
+
+def delaySoundBasedOnType(typeOfScore):
+    delayMilliSec = getDelayMilliSecondsFromType(typeOfScore)
+    time.sleep(delayMilliSec)
 
 @app.route('/play', methods=['GET'])
 def get():
@@ -50,6 +66,11 @@ def get():
     fileFullPath,file = getRandomSoundFile(typeOfScore,"wmv")
     print(file)
     print(fileFullPath)
+
+    delaySoundBasedOnType(typeOfScore)
+
+    playSoundFile(fileFullPath)
+    #return the status parallel to playing the file
     return file, 201
 
 if __name__ == '__main__':
