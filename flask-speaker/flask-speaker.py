@@ -23,7 +23,10 @@ def getRandomSoundFile(folder,extension):
     searchLocation = os.path.join(searchfolder,globExtensionString)
     files = glob.glob(searchLocation)
     if files:
-        return random.sample(files, 1)[0]
+
+        randomFile = random.sample(files, 1)[0]
+        randomFileWithoutFolder = randomFile.replace(searchfolder,"")[1:]
+        return randomFile,randomFileWithoutFolder
     return None
 
 def playSoundFile(file):
@@ -34,11 +37,20 @@ def playSoundFile(file):
 
 @app.route('/play', methods=['GET'])
 def get():
-    print(request)
-    print(request.data)
-    file = getRandomSoundFile("","wmv")
+    try:
+        typeOfScore = request.args.get("type")
+    except:
+        typeOfScore = None
+    if not typeOfScore:
+        return "", 201
+
+    if not os.path.isdir(typeOfScore):
+        return "", 201
+
+    fileFullPath,file = getRandomSoundFile(typeOfScore,"wmv")
     print(file)
-    return "", 201
+    print(fileFullPath)
+    return file, 201
 
 if __name__ == '__main__':
     app.run("0.0.0.0",debug=True)
