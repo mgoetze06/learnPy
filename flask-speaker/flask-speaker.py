@@ -48,19 +48,22 @@ def playSoundFile(file):
 
 def getDelayMilliSecondsFromType(typeOfScore):
     files,_ = getFilesFromFolderWithExtension(typeOfScore,"txt")
+    print("files", files)
     delay = 1
     if files:
         delayFile = files[0]
         #read from file and store in delay
-        delay = 3
-    
+        with open(delayFile) as f:
+            s = f.read()
+            delay = int(s)
+            f.close()
     return delay
 
 
 def delaySound(delaySeconds):
     print(f"total sleeping time {delaySeconds}s")
     for i in range(delaySeconds):
-        print("sleeping one second")
+        print(f"sleeping {i+1}/{delaySeconds} seconds")
         time.sleep(1)
 
 @app.route('/play', methods=['GET'])
@@ -70,10 +73,10 @@ def get():
     except:
         typeOfScore = None
     if not typeOfScore:
-        return "", 201
+        return "", 401
 
     if not os.path.isdir(typeOfScore):
-        return "", 201
+        return "", 401
 
     fileFullPath,file = getRandomSoundFile(typeOfScore,"wmv")
     print(file)
