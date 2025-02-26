@@ -14,6 +14,8 @@ app = Flask(__name__)
 #delay based on score. Autodarts caller takes different amount of time to say different scores.
 #Saying 3 takes less time than saying 26 
 
+VALID_EXTENSIONS = ["wmv","mp3","m4a"]
+
 
 def delayAndPlaySound(file,delayMS):
     delaySound(delayMS)
@@ -31,10 +33,15 @@ def getFilesFromFolderWithExtension(folder,extension):
     files = glob.glob(searchLocation)
     return files, searchfolder
 
-def getRandomSoundFile(folder,extension):
-    files,searchfolder = getFilesFromFolderWithExtension(folder,extension)
-    if files:
-        randomFile = random.sample(files, 1)[0]
+def getRandomSoundFile(folder):
+    allFiles = []
+    for extension in VALID_EXTENSIONS:
+        files,searchfolder = getFilesFromFolderWithExtension(folder,extension)
+        if files:
+            allFiles += files
+
+    if len(allFiles)>0:
+        randomFile = random.sample(allFiles, 1)[0]
         randomFileWithoutFolder = randomFile.replace(searchfolder,"")[1:]
         return randomFile,randomFileWithoutFolder
     return None
@@ -78,7 +85,7 @@ def get():
     if not os.path.isdir(typeOfScore):
         return "", 401
 
-    fileFullPath,file = getRandomSoundFile(typeOfScore,"wmv")
+    fileFullPath,file = getRandomSoundFile(typeOfScore)
     print(file)
     print(fileFullPath)
 
