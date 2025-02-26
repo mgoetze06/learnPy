@@ -1,0 +1,12 @@
+#/etc/systemd/system/flaskspeaker.service
+[Unit]
+Description=Play soundfiles on http requests
+After=network.target
+
+[Service]
+WorkingDirectory=/home/boris/projects/learnPy/flask-speaker
+User=boris
+ExecStart=/usr/bin/python3 /home/boris/projects/learnPy/flask-speaker/flask-speaker.py
+
+[Install]
+WantedBy=multi-user.target
