@@ -244,6 +244,7 @@ class Ui_MainWindow(object):
         else:
             self.label.setText("No property selected.")
             self.image_label.clear()
+            self.load_comboBox_data()
 
     def on_comboBox_changed(self):
         self.on_button_clicked()

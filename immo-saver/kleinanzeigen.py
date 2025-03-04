@@ -1,6 +1,7 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.options import Options 
 from pprint import pprint
 import wget
 import os
@@ -48,10 +49,13 @@ def saveAllImagesFromDriver(driver,immo_ID):
         imgsrc = imgsrc.split("\"")[0]
         print(imgsrc)
 
-        dir = "Orte\ID_"+str(immo_ID)
+        dir = os.path.join("Orte","ID_"+str(immo_ID))
         filename = str(filecount)+".jpg"
         saveImageFromUrlToDirectory(imgsrc,filename,dir)
         wget.download(imgsrc)
+
+    if not os.path.exists(dir):
+        os.makedirs(dir)
     files = os.listdir(".")
     for path in files:
         if not os.path.splitext(path)[1]:
@@ -145,10 +149,13 @@ def getInformationenFromKleinanzeigenURL(url):
     if url is None or url == '':
         return
     options = Options()
-    options.headless = True  # Enable headless mode for invisible operation
+    #options.headless = True  # Enable headless mode for invisible operation
 
-    driver = webdriver.Chrome(options=options)
-
+    #driver = webdriver.Chrome(options=options)
+    options.binary_location = r'/usr/bin/firefox'
+    #from selenium.webdriver.firefox.service import Service
+    #service = Service('/home/pi/.local/bin/geckodriver')
+    driver = webdriver.Firefox(options=options)
     #url = 'https://www.kleinanzeigen.de/s-anzeige/renovierungsbeduerftig/2776025846-208-11843'
 
 
