@@ -318,7 +318,7 @@ def main(args: Namespace) -> None:
         #the_map = create_folium_map(tiles='stamenterrain')
         mapcenter_lat = (lat_min + lat_max)/2
         mapcenter_lon = (lon_min + lon_max)/2 
-        the_map = folium.Map(location=(mapcenter_lat,mapcenter_lon))
+        #the_map = folium.Map(location=(mapcenter_lat,mapcenter_lon))
         the_map_heatmap = folium.Map(location=(mapcenter_lat,mapcenter_lon))
 
         heatmap_list = []
@@ -335,18 +335,18 @@ def main(args: Namespace) -> None:
                     heatmap_value = 3*radius
                     list = [lat,lon,heatmap_value]
                     heatmap_list.append(list)
-                    folium.CircleMarker(location=[lat,lon],radius=radius,color=getFoliumColorNameFromHeatmapScore(radius)).add_to(the_map)
+                    #folium.CircleMarker(location=[lat,lon],radius=radius,color=getFoliumColorNameFromHeatmapScore(radius)).add_to(the_map)
 
         heat_map = HeatMap(heatmap_list,min_opacity=0.5,blur = 3,radius=3)
         heat_map.add_to(the_map_heatmap)
         if not os.path.exists("templates"):
             os.mkdir("templates")
-        map_filename = os.path.join("templates","map.html")
+        #map_filename = os.path.join("templates","map.html")
         heatmap_filename = os.path.join("templates","heatmap.html")
-        the_map.save(map_filename)
+        #the_map.save(map_filename)
         heat_map.save(heatmap_filename)
         print('Saved {}'.format(heatmap_filename))
-        print('Saved {}'.format(map_filename))
+        #print('Saved {}'.format(map_filename))
 
         #print('Saved {}'.format(csv_file))
     return

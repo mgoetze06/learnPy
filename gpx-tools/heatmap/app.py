@@ -5,7 +5,19 @@ app = Flask(__name__)
 
 @app.route('/')
 def render_the_map():
-    return render_template('map.html')
+    heatmap_filename = os.path.join("templates","heatmap.html")
+
+    if os.path.exists(heatmap_filename):
+
+        return render_template("heatmap.html")
+    normalmap_filename = os.path.join("templates","map.html")
+
+    if os.path.exists(normalmap_filename):
+
+        return render_template("map.html")
+    
+    abort(404)
+
 
 @app.route('/heatmap')
 def render_map_as_image():
