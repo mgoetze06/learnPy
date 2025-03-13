@@ -1,6 +1,7 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.firefox.options import Options 
 import undetected_chromedriver as uc
 from pprint import pprint
 import wget
@@ -159,12 +160,21 @@ def getSizesAndYearFromDriver(driver):
 def getInformationenFromImmoscoutURL(url):
     if url is None or url == '':
         return
+    #options = Options()
+    #options.headless = True  # Enable headless mode for invisible operation
+    #options = webdriver.ChromeOptions() 
+    #options.add_argument("start-maximized")
+    #driver = uc.Chrome(options=options)
+    #driver = webdriver.Chrome(options=options)
+
     options = Options()
-    options.headless = True  # Enable headless mode for invisible operation
-    options = webdriver.ChromeOptions() 
-    options.add_argument("start-maximized")
-    driver = uc.Chrome(options=options)
-    driver = webdriver.Chrome(options=options)
+    #options.headless = True  # Enable headless mode for invisible operation
+
+    #driver = webdriver.Chrome(options=options)
+    options.binary_location = r'/usr/bin/firefox'
+    #from selenium.webdriver.firefox.service import Service
+    #service = Service('/home/pi/.local/bin/geckodriver')
+    driver = webdriver.Firefox(options=options)
 
     with open('immo.json', encoding='utf-8') as f:
         data = json.load(f)
