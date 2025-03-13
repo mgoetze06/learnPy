@@ -1,3 +1,5 @@
+#this script was adapted from https://github.com/remisalmon/Strava-local-heatmap
+
 # imports
 import os
 import glob
@@ -11,7 +13,7 @@ from urllib.request import Request, urlopen
 from argparse import ArgumentParser, Namespace
 
 import folium
-
+from folium.plugins import HeatMap
 # globals
 HEATMAP_MAX_SIZE = (2160, 3840) # maximum heatmap size in pixel
 HEATMAP_MARGIN_SIZE = 32 # margin around heatmap trackpoints in pixel
@@ -310,10 +312,16 @@ def main(args: Namespace) -> None:
         print('Saved {}'.format(csv_file))
     # save html
     if not args.orange:
+
+        print("starting folium map generation")
+
         #the_map = create_folium_map(tiles='stamenterrain')
         mapcenter_lat = (lat_min + lat_max)/2
         mapcenter_lon = (lon_min + lon_max)/2 
         the_map = folium.Map(location=(mapcenter_lat,mapcenter_lon))
+        the_map_heatmap = folium.Map(location=(mapcenter_lat,mapcenter_lon))
+
+        heatmap_list = []
         for i in range(data.shape[0]):
             for j in range(data.shape[1]):
                 if data[i, j] > 0.1:
@@ -324,9 +332,22 @@ def main(args: Namespace) -> None:
 
                     #file.write('{},{},{}\n'.format(lat, lon, data[i,j]))
                     radius = 1 * data[i,j]
+                    heatmap_value = 3*radius
+                    list = [lat,lon,heatmap_value]
+                    heatmap_list.append(list)
                     folium.CircleMarker(location=[lat,lon],radius=radius,color=getFoliumColorNameFromHeatmapScore(radius)).add_to(the_map)
 
-        the_map.save('map.html')
+        heat_map = HeatMap(heatmap_list,min_opacity=0.5,blur = 3,radius=3)
+        heat_map.add_to(the_map_heatmap)
+        if not os.path.exists("templates"):
+            os.mkdir("templates")
+        map_filename = os.path.join("templates","map.html")
+        heatmap_filename = os.path.join("templates","heatmap.html")
+        the_map.save(map_filename)
+        heat_map.save(heatmap_filename)
+        print('Saved {}'.format(heatmap_filename))
+        print('Saved {}'.format(map_filename))
+
         #print('Saved {}'.format(csv_file))
     return
 
