@@ -11,9 +11,11 @@ import matplotlib.pyplot as plt
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 from argparse import ArgumentParser, Namespace
-
+from datetime import datetime
 import folium
 from folium.plugins import HeatMap
+
+import shutil
 # globals
 HEATMAP_MAX_SIZE = (2160, 3840) # maximum heatmap size in pixel
 HEATMAP_MARGIN_SIZE = 32 # margin around heatmap trackpoints in pixel
@@ -71,6 +73,11 @@ def gaussian_filter(image: np.ndarray, sigma: float) -> np.ndarray:
     return image
 
 def main(args: Namespace) -> None:
+    logToFile("start copying files from HA")
+    copyFilesFromHAtoHeatmapGeneration()
+
+    time.sleep(2)
+
     # read GPX trackpoints
     gpx_files = glob.glob('{}/{}'.format(args.dir,
                                          args.filter))
@@ -78,6 +85,15 @@ def main(args: Namespace) -> None:
     if not gpx_files:
         exit('ERROR no data matching {}/{}'.format(args.dir,
                                                    args.filter))
+
+    if not isNewFileAvailable("lastfiles.txt",gpx_files):
+        print("nothing changed in gpx_files")
+        logToFile("nothing changed in gpx_files")
+
+        return
+    
+    writeLastFileNames("lastfiles.txt",gpx_files)
+    logToFile("new files, starting creation")
 
     gpx_files_count = 0
 
@@ -163,6 +179,7 @@ def main(args: Namespace) -> None:
 
     # download tiles
     os.makedirs('tiles', exist_ok=True)
+    logToFile("starting to create tiles")
 
     supertile = np.zeros(((y_tile_max-y_tile_min+1)*OSM_TILE_SIZE,
                           (x_tile_max-x_tile_min+1)*OSM_TILE_SIZE, 3))
@@ -291,6 +308,7 @@ def main(args: Namespace) -> None:
     plt.imsave(args.output, supertile)
 
     print('Saved {}'.format(args.output))
+    logToFile("Saved from plt")
 
     # save csv
     if args.csv and not args.orange:
@@ -310,10 +328,13 @@ def main(args: Namespace) -> None:
                         file.write('{},{},{}\n'.format(lat, lon, data[i,j]))
 
         print('Saved {}'.format(csv_file))
+        logToFile("Saved csv")
+
     # save html
     if not args.orange:
 
         print("starting folium map generation")
+        logToFile("starting folium map generation")
 
         #the_map = create_folium_map(tiles='stamenterrain')
         mapcenter_lat = (lat_min + lat_max)/2
@@ -346,10 +367,85 @@ def main(args: Namespace) -> None:
         #the_map.save(map_filename)
         heat_map.save(heatmap_filename)
         print('Saved {}'.format(heatmap_filename))
+        logToFile("Saved heatmap")
+
         #print('Saved {}'.format(map_filename))
 
         #print('Saved {}'.format(csv_file))
+
+    time.sleep(3)
+    copyHeatmapToHA()
+    removeGPXFilesFromHA()
     return
+
+def copyFilesFromHAtoHeatmapGeneration():
+    try:
+        dest_dir = "/home/boris/projects/gpx-heatmap/heatmap/gpx"
+        src_dir = "/mnt/homeassistant/www/gpx/"
+        for file in glob.glob(src_dir+r'*.gpx'):
+            print("copying file from homeassistant: ",file)
+            logToFile("Saved heatmap")
+
+            newfile = file.split(src_dir)[1]
+
+            newfile = os.path.join(dest_dir,newfile)
+
+            shutil.copyfile(file, newfile)
+    except:
+        logToFile("copying from HA to heatmap generation failed")
+
+        pass
+def removeGPXFilesFromHA():
+    try:
+        src_dir = "/mnt/homeassistant/www/gpx/"
+        for file in glob.glob(src_dir+r'*.gpx'):
+            print("removing file from homeassistant: ",file)
+            os.remove(file)
+    except:
+        logToFile("removing from HA gpx folder failed")
+
+        pass
+
+def copyHeatmapToHA():
+    try:
+        shutil.copyfile("/home/boris/projects/gpx-heatmap/heatmap/heatmap.png","/mnt/homeassistant/www/heatmap.png")
+    except:
+        logToFile("copyHeatmapToHA failed")
+        pass
+
+def isNewFileAvailable(filename_lastfile, gpx_files):
+    last_files = []
+    if not os.path.exists(filename_lastfile):
+        print("file doesn't exists",filename_lastfile)
+        logToFile("neue datei gefunden, starte heatmap 1")
+        return True
+    
+    print("opening file",filename_lastfile)
+    with open(filename_lastfile, "r",encoding='UTF-8') as file:
+        for line in file:
+            #print(line.rstrip())
+            last_files.append(line.rstrip())
+
+    for file in gpx_files:
+        if file not in last_files:
+            print("newfile found:", file)
+            logToFile("neue datei gefunden, starte heatmap 2")
+
+            return True
+        #print("found file in lastfiles: ",file)
+    logToFile("keine neue datei gefunden, keine neue heatmap")
+
+    return False
+
+def writeLastFileNames(filename_lastfile, gpx_files):
+    print("writing all last files to file : ",filename_lastfile)
+    f = open(filename_lastfile, "w",encoding='UTF-8')
+    for file in gpx_files:
+        f.write(file + os.linesep)
+        #print(file)
+    f.close()
+    logToFile("writing all last files to file : " + filename_lastfile)
+
 
 def getFoliumColorNameFromHeatmapScore(score):
     name = 'green'
@@ -368,6 +464,13 @@ def getFoliumColorNameFromHeatmapScore(score):
 
 
     return name
+
+def logToFile(log):
+    f = open("log.txt", "a",encoding='UTF-8')
+    f.write(str(datetime.now()))
+    f.write(": ")
+    f.write(log + os.linesep)
+    f.close()
 
 if __name__ == '__main__':
     parser = ArgumentParser(description='Generate a PNG heatmap from local Strava GPX files',

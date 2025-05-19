@@ -1,0 +1,6 @@
+2025-04-16 20:57:45.353183start copying files from HA
+2025-04-16 20:57:47.376373keine neue datei gefunden, keine neue heatmap
+2025-04-16 20:57:47.378320nothing changed in gpx_files
+2025-04-16 20:58:28.694140: start copying files from HA
+2025-04-16 20:58:30.696971: keine neue datei gefunden, keine neue heatmap
+2025-04-16 20:58:30.701845: nothing changed in gpx_files

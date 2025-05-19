@@ -636,3 +636,22 @@ immo-saver/__pycache__/mapgenerator.cpython-313.pyc
 flask-speaker/26_1.wmv
 flask-speaker/26_2.wmv
 gpx-tools/heatmap/tiles
+gpx-tools/strava-activities/strava_secrets_request.py
+gpx-tools/strava-activities/secrets.txt
+gpx-tools/strava-activities/strava-all.py
+gpx-tools/strava-activities/strava.py
+gpx-tools/strava-activities/__pycache__/strava_secrets_request.cpython-310.pyc
+gpx-tools/heatmap/gpx/xayssy.gpx
+gpx-tools/heatmap/gpx/archiv/2023-04-10_1076655300_Fahrradtour.gpx
+gpx-tools/heatmap/gpx/archiv/2024-05-01_1545041278_Von BTF nach Kanena.gpx
+gpx-tools/heatmap/gpx/archiv/2025-03-10_2093086587_Neues Cube abholen.gpx
+gpx-tools/heatmap/gpx/archiv/2025-03-12_2095765671_Feierabend im Regen.gpx
+gpx-tools/heatmap/gpx/archiv/2025-03-13_2096955358_Feierabendsonne und am Ende geht die Luft aus.gpx
+gpx-tools/heatmap/gpx/archiv/Brüderliche_Seenrunde.gpx
+gpx-tools/heatmap/gpx/archiv/Der_Wind_ist_mein_Berg.gpx
+gpx-tools/heatmap/gpx/archiv/Fahrt_am_Nachmittag_1.gpx
+gpx-tools/heatmap/gpx/archiv/Fahrt_am_Nachmittag_2.gpx
+gpx-tools/heatmap/gpx/archiv/Fahrt_am_Nachmittag.gpx
+gpx-tools/heatmap/gpx/archiv/Going_Home.gpx
+gpx-tools/heatmap/gpx/archiv/Seenrunde.gpx
+gpx-tools/heatmap/gpx/archiv/Vollgas_für_Werni.gpx
