@@ -639,7 +639,6 @@ gpx-tools/heatmap/tiles
 gpx-tools/strava-activities/strava_secrets_request.py
 gpx-tools/strava-activities/secrets.txt
 gpx-tools/strava-activities/strava-all.py
-gpx-tools/strava-activities/strava.py
 gpx-tools/strava-activities/__pycache__/strava_secrets_request.cpython-310.pyc
 gpx-tools/heatmap/gpx/xayssy.gpx
 gpx-tools/heatmap/gpx/archiv/2023-04-10_1076655300_Fahrradtour.gpx
@@ -655,3 +654,4 @@ gpx-tools/heatmap/gpx/archiv/Fahrt_am_Nachmittag.gpx
 gpx-tools/heatmap/gpx/archiv/Going_Home.gpx
 gpx-tools/heatmap/gpx/archiv/Seenrunde.gpx
 gpx-tools/heatmap/gpx/archiv/Vollgas_für_Werni.gpx
+gpx-tools/strava-activities/login.py

@@ -12,7 +12,7 @@ import login
 import json
 from paho.mqtt import client as mqtt_client
 
-def getStravaData():
+def getStravaData(getDatasetActivities = False):
     now = datetime.now()
 
     auth_url = "https://www.strava.com/oauth/token"
@@ -53,6 +53,8 @@ def getStravaData():
 
 
     activities = json_normalize(all_activities)
+    if getDatasetActivities:
+        return activities
     #activities.columns
     # Index(['resource_state', 'name', 'distance', 'moving_time', 'elapsed_time',
     #        'total_elevation_gain', 'type', 'sport_type', 'workout_type', 'id',
