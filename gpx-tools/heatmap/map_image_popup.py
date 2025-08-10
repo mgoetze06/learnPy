@@ -38,6 +38,18 @@ def main_piexif(filename):
     exif_dict = exif_to_tag(exif_dict)
 
     pprint(exif_dict['GPS'])
+
+def getPictureSize(filename):
+    if filename:
+        im = Image.open(filename)
+        return im.size
+    return None
+
+def computeNewSize(finalWidth,imageSize):
+    wpercent = (finalWidth / float(imageSize[0]))
+    hsize = int((float(imageSize[1]) * float(wpercent)))
+
+    return (finalWidth,hsize)
     
 
 def decimal_coords(coords, ref):
@@ -65,7 +77,7 @@ def image_coordinates(image_path):
     return({"imageTakenTime":img.datetime_original, "geolocation_lat":coords[0],"geolocation_lng":coords[1]})
 
 if __name__ == '__main__':
-    list_images = glob.glob("*.jpg")
+    list_images = glob.glob("*.JPG")
     first = True
     #filename = 'IMG_2685.jpg'  # obviously one of your own pictures
     for image in list_images:
@@ -85,20 +97,29 @@ if __name__ == '__main__':
         print(filename)
         #filename = filename.replace("/","//")
         popuphtml = "<img src='"+filename+"' style=\"max-height: 1000px; max-width: 800px;\">"
+        original_picture_size = getPictureSize(filename)
+        iconSizeWidth = 50
+        iconSize = computeNewSize(iconSizeWidth,original_picture_size)
         icon_image = filename
         icon = folium.CustomIcon(
             icon_image,
-            icon_size=(50, 50),
-            icon_anchor=(0, 0),
-            popup_anchor=(0, 0),
+            icon_size=iconSize,
+            icon_anchor=(iconSizeWidth//2, 0),
+            popup_anchor=(iconSizeWidth//2, 0),
         )
-        if lat:
-            marker = folium.Marker(
+        #if lat:
+        marker = folium.Marker(
                         location=(lat,lon),
                         #icon=folium.Icon(icon='home'),
                         icon=icon,
                         popup=folium.Popup(popuphtml),
                     )
-            marker.add_to(fg)
+        marker.add_to(fg)
+        marker = folium.Marker(
+                        location=(lat,lon),
+                        icon=folium.Icon(icon='camera'),
+                        popup=folium.Popup(popuphtml),
+                    )
+        marker.add_to(fg)
     folium.LayerControl().add_to(map)
     map.save('image_popup.html')
