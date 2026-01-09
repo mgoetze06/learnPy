@@ -21,7 +21,7 @@ import shutil
 HEATMAP_MAX_SIZE = (2*2160, 2*3840) # maximum heatmap size in pixel
 HEATMAP_MARGIN_SIZE = 32 # margin around heatmap trackpoints in pixel
 
-PLT_COLORMAP = 'hot' # matplotlib color map
+PLT_COLORMAP = 'rainbow' # matplotlib color map
 
 OSM_TILE_SERVER = 'https://tile.openstreetmap.org/{}/{}/{}.png' # OSM tile url from https://wiki.openstreetmap.org/wiki/Raster_tile_providers
 OSM_TILE_SIZE = 256 # OSM tile size in pixel
@@ -87,11 +87,11 @@ def main(args: Namespace) -> None:
         exit('ERROR no data matching {}/{}'.format(args.dir,
                                                    args.filter))
 
-    if not isNewFileAvailable("lastfiles.txt",gpx_files):
-        print("nothing changed in gpx_files")
-        logToFile("nothing changed in gpx_files")
+    # if not isNewFileAvailable("lastfiles.txt",gpx_files):
+    #     print("nothing changed in gpx_files")
+    #     logToFile("nothing changed in gpx_files")
 
-        return
+    #     return
     
     writeLastFileNames("lastfiles.txt",gpx_files)
     logToFile("new files, starting creation")
@@ -228,10 +228,10 @@ def main(args: Namespace) -> None:
             supertile[i*OSM_TILE_SIZE:(i+1)*OSM_TILE_SIZE,
                       j*OSM_TILE_SIZE:(j+1)*OSM_TILE_SIZE, :] = tile[:, :, :3]
 
-    if not args.orange:
-        supertile = np.sum(supertile*[0.2126, 0.7152, 0.0722], axis=2) # to grayscale
-        supertile = 1.0-supertile # invert colors
-        supertile = np.dstack((supertile, supertile, supertile)) # to rgb
+    #if not args.orange:
+        #supertile = np.sum(supertile*[0.2126, 0.7152, 0.0722], axis=2) # to grayscale
+        #supertile = 1.0-supertile # invert colors
+        #supertile = np.dstack((supertile, supertile, supertile)) # to rgb
 
     # fill trackpoints
     sigma_pixel = args.sigma if not args.orange else 1
@@ -258,45 +258,34 @@ def main(args: Namespace) -> None:
 
     else:
         m = 1.0
+    
+    
+    #data = gaussian_filter(data, float(sigma_pixel)) # kernel density estimation with normal kernel
 
     data[data > m] = m
 
     # equalize histogram and compute kernel density estimation
-    if not args.orange:
-        data_hist, _ = np.histogram(data, bins=int(m+1))
+    data_hist, _ = np.histogram(data, bins=int(m+1))
 
-        data_hist = np.cumsum(data_hist)/data.size # normalized cumulated histogram
+    data_hist = np.cumsum(data_hist)/data.size # normalized cumulated histogram
 
-        for i in range(data.shape[0]):
-            for j in range(data.shape[1]):
-                data[i, j] = m*data_hist[int(data[i, j])] # histogram equalization
+    for i in range(data.shape[0]):
+        for j in range(data.shape[1]):
+            data[i, j] = m*data_hist[int(data[i, j])] # histogram equalization
 
-        data = gaussian_filter(data, float(sigma_pixel)) # kernel density estimation with normal kernel
+    #data = gaussian_filter(data, float(sigma_pixel)) # kernel density estimation with normal kernel
 
-        data = (data-data.min())/(data.max()-data.min()) # normalize to [0,1]
+    data = (data-data.min())/(data.max()-data.min()) # normalize to [0,1]
 
-    # colorize
-    if not args.orange:
-        cmap = plt.get_cmap(PLT_COLORMAP)
+    cmap = plt.get_cmap(PLT_COLORMAP)
 
-        data_color = cmap(data)
-        data_color[data_color == cmap(0.0)] = 0.0 # remove background color
+    data_color = cmap(data)
+    data_color[data_color == cmap(0.0)] = 0.0 # remove background color
 
-        for c in range(3):
-            supertile[:, :, c] = (1.0-data_color[:, :, c])*supertile[:, :, c]+data_color[:, :, c]
-
-    else:
-        color = np.array([255, 82, 0], dtype=float)/255 # orange
-
-        for c in range(3):
-            supertile[:, :, c] = np.minimum(supertile[:, :, c]+gaussian_filter(data, 1.0), 1.0) # white
-            supertile[:, :, c] = np.maximum(supertile[:, :, c], 0.0)
-
-        data = gaussian_filter(data, 0.5)
-        data = (data-data.min())/(data.max()-data.min())
-
-        for c in range(3):
-            supertile[:, :, c] = (1.0-data)*supertile[:, :, c]+data*color[c]
+    for c in range(3):
+        supertile[:, :, c] = (1.0-data_color[:, :, c])*supertile[:, :, c]+data_color[:, :, c]
+        #supertile[:, :, c] =  data_color[:, :, c]
+        #supertile[:, :, c] = supertile[:, :, c]+, 1.0)
 
     # crop image
     i_min, j_min = np.min(ij_data, axis=0)
@@ -304,13 +293,15 @@ def main(args: Namespace) -> None:
 
     supertile = supertile[max(i_min-HEATMAP_MARGIN_SIZE, 0):min(i_max+HEATMAP_MARGIN_SIZE, supertile.shape[0]),
                           max(j_min-HEATMAP_MARGIN_SIZE, 0):min(j_max+HEATMAP_MARGIN_SIZE, supertile.shape[1])]
-
+    data_color = data_color[max(i_min-HEATMAP_MARGIN_SIZE, 0):min(i_max+HEATMAP_MARGIN_SIZE, data_color.shape[0]),
+                          max(j_min-HEATMAP_MARGIN_SIZE, 0):min(j_max+HEATMAP_MARGIN_SIZE, data_color.shape[1])]
     # save image
     plt.imsave(args.output, supertile)
+    plt.imsave("data.png", data_color)
 
     print('Saved {}'.format(args.output))
     logToFile("Saved from plt")
-
+    return
     # save csv
     if args.csv and not args.orange:
         csv_file = '{}.csv'.format(os.path.splitext(args.output)[0])

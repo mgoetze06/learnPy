@@ -12,7 +12,7 @@ import login
 import json
 from paho.mqtt import client as mqtt_client
 
-def getStravaData(getDatasetActivities = False):
+def getStravaData():
     now = datetime.now()
 
     auth_url = "https://www.strava.com/oauth/token"
@@ -53,8 +53,6 @@ def getStravaData(getDatasetActivities = False):
 
 
     activities = json_normalize(all_activities)
-    if getDatasetActivities:
-        return activities
     #activities.columns
     # Index(['resource_state', 'name', 'distance', 'moving_time', 'elapsed_time',
     #        'total_elevation_gain', 'type', 'sport_type', 'workout_type', 'id',
@@ -88,6 +86,10 @@ def getStravaData(getDatasetActivities = False):
     d4 = round(current_month_rides["average_speed"].mean() * 3.6,2)
     d5 = round(current_month_rides["distance"].mean()/1000,2)
     d6 = round(max(rides['average_speed']) * 3.6,2)
+
+    if d2 == 0:
+        d4 = 0
+        d5 = 0
 
     print("sum distance all rides: ",d1, "km")
     print("sum distance rides this month: ",d2, "km")
@@ -124,7 +126,10 @@ def connect_mqtt():
     #client.username_pw_set(username, password)
     client.username_pw_set(login.user, login.pw)
     client.on_connect = on_connect
-    client.connect(login.broker, login.port)
+    try:
+        client.connect(login.broker, login.port)
+    except:
+        pass
     return client
 
 
@@ -147,8 +152,10 @@ def run():
         client.loop_start()
         publish(client)
         client.loop_stop()
-        time.sleep(60*60*8)
-
+        print("entering sleep")
+        time.sleep(60*60*6)
+        #time.sleep(20)
+        print("exiting from sleep")
 
 
 if __name__ == '__main__':
