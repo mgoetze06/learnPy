@@ -4,6 +4,7 @@ from datetime import datetime
 import os,shutil
 from strava_secrets_request import getFullHeaderWithAccessToken,getSecrets
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+from datetime import datetime, timedelta
 
 
 #########################################################################
@@ -34,10 +35,7 @@ def get_data_stream(activity_id,header):
     return my_dataset
 
 def add_seconds_to_timestamp(start_timestamp, seconds):
-    from datetime import datetime, timedelta
-    #start_time = datetime.fromisoformat(start_timestamp.split("T")[0])
-    start_timestamp = start_timestamp.replace("T"," ").replace("Z","")
-    start_time = datetime.strptime(f"{start_timestamp}", "%Y-%m-%d %H:%M:%S") 
+    start_time = getDatetimeFromTimestamp(start_timestamp)
     new_time = start_time + timedelta(seconds=seconds)
     return (new_time.isoformat() + "Z").replace("+00:00", "")
 
@@ -47,11 +45,21 @@ def get_strava_activity(activity_id,header):
 
         data = requests.get(url, headers=header).json()
         return data
+
+def getDatetimeFromTimestamp(timestamp):
+    replacedTimestamp = timestamp.replace("T"," ").replace("Z","")
+    time = datetime.strptime(f"{replacedTimestamp}", "%Y-%m-%d %H:%M:%S") 
+    #time = time + timedelta(hours=1)
+    return time
+
 def writeGPX(output,activity,data_streams):
+
+    start_date = activity['start_date']
+
     gpx_content_start = f'''<?xml version="1.0" encoding="UTF-8"?>
 <gpx xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.topografix.com/GPX/1/1 http://www.topografix.com/GPX/1/1/gpx.xsd http://www.garmin.com/xmlschemas/GpxExtensions/v3 http://www.garmin.com/xmlschemas/GpxExtensionsv3.xsd http://www.garmin.com/xmlschemas/TrackPointExtension/v1 http://www.garmin.com/xmlschemas/TrackPointExtensionv1.xsd" creator="StravaGPX" version="1.1" xmlns="http://www.topografix.com/GPX/1/1" xmlns:gpxtpx="http://www.garmin.com/xmlschemas/TrackPointExtension/v1" xmlns:gpxx="http://www.garmin.com/xmlschemas/GpxExtensions/v3">
  <metadata>
-  <time>{activity['start_date']}</time>
+  <time>{start_date}</time>
  </metadata>
  <trk>
   <name>{activity['name']}</name>
@@ -125,11 +133,27 @@ def tryToRemoveFile(file):
         logToFile("removing gpx file failed.")
         pass
 
+def getActivityID():
+
+    activity_id = input("activity id:")
+    if len(activity_id) < 11:
+        return None
+    
+    if len(activity_id) == 11:
+        return activity_id
+    
+    try:
+        activity_id = activity_id.split("https://www.strava.com/activities/")[1].replace(" ","")
+        return activity_id
+    except:
+        pass
+
+
 def main_http():
 
     header = getFullHeaderWithAccessToken()
 
-    activity_id = 16875233580 #TODO check which activities already been downloaded and only get new ones
+    activity_id = getActivityID() #TODO check which activities already been downloaded and only get new ones
     
 
     activity = get_strava_activity(activity_id,header)
