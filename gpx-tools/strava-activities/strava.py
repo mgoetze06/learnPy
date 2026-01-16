@@ -97,7 +97,7 @@ def getStravaData():
     print("average speed this month: ",d4, "km/h")
     print("average distance this month: ",d5, "km")
     print("max average speed all rides: ",d6, "km/h")
-    return now.strftime("%Y-%m-%d, %H:%M:%S"),d1,d2,d3,d4,d5,d6
+    return now.strftime("%Y-%m-%d, %H:%M:%S"),d1,d2,d3,d4,d5,d6,rides
 
 # broker = <IP>
 # port = <PORT>
@@ -134,7 +134,7 @@ def connect_mqtt():
 
 
 def publish(client):
-    timestamp,distance_all,distance_month,distance_year,average_speed_month,average_distance_month,max_average_speed = getStravaData()
+    timestamp,distance_all,distance_month,distance_year,average_speed_month,average_distance_month,max_average_speed,rides = getStravaData()
     MQTT_MSG=json.dumps({"timestamp": timestamp,"distance_all": distance_all,"distance_month":  distance_month,"distance_year": distance_year,"average_speed_month": average_speed_month,"average_distance_month": average_distance_month,"max_average_speed": max_average_speed});
     result = client.publish(login.topic, MQTT_MSG)
     # result: [0, 1]
@@ -144,14 +144,30 @@ def publish(client):
     else:
         print(f"Failed to send message to topic {login.topic}")
 
+    return rides
+
+
+def downloadLastThreeActivities(rides):
+    for i in range(1,4):
+        loc = i*-1
+        print(rides.iloc[loc])
+        print(rides.iloc[loc]["id"])
+        print(rides.iloc[loc]["upload_id"])
+        print(rides.iloc[loc]["upload_id_str"])
+        print(rides.iloc[loc]["external_id"])
+
+
+    return 
 
 
 def run():
     while True:
         client = connect_mqtt()
         client.loop_start()
-        publish(client)
+        rides = publish(client)
         client.loop_stop()
+
+        downloadLastThreeActivities(rides)
         print("entering sleep")
         time.sleep(60*60*6)
         #time.sleep(20)

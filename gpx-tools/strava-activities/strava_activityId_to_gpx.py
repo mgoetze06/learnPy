@@ -149,15 +149,16 @@ def getActivityID():
         pass
 
 
-def main_http():
+def downloadGPXFileFromActivityID(activity_id=None):
 
     header = getFullHeaderWithAccessToken()
 
-    activity_id = getActivityID() #TODO check which activities already been downloaded and only get new ones
+    if activity_id == None:
+        activity_id = getActivityID() #TODO check which activities already been downloaded and only get new ones
     
 
     activity = get_strava_activity(activity_id,header)
-    output = activity['start_date'].replace("T","-").replace("Z","").replace(":","-") + "_" + activity['name'].replace(" ","_")+".gpx"
+    output = activity['start_date_local'].replace("T","-").replace("Z","").replace(":","-") + "_" + activity['name'].replace(" ","_")+".gpx"
     data_streams = get_data_stream(activity_id,header)
     tryToRemoveFile(output)
 
@@ -165,4 +166,4 @@ def main_http():
     copyGPXToHeatmapFolder(output)
 
 if __name__ == '__main__':
-    main_http()
+    downloadGPXFileFromActivityID()
