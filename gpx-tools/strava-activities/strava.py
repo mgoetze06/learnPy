@@ -120,7 +120,8 @@ def writeGPX(output,activity,data_streams):
 
 def fileExistsHeatmapFolder(filename):
     try:
-        destdir = "/home/boris/projects/gpx-heatmap/heatmap/gpx/"
+        #destdir = "/home/boris/projects/gpx-heatmap/heatmap/gpx/"
+        destdir = "/heatmap/gpx/"
         fullPath = destdir + filename
         return os.path.isfile(fullPath)
     except:
@@ -135,16 +136,21 @@ def fileExistsLocalFolder(filename):
 
 def copyGPXToHeatmapFolder(gpxfile):
     try:
-        dest_dir = "/home/boris/projects/gpx-heatmap/heatmap/gpx"
-        shutil.copyfile(gpxfile,dest_dir)
-    except:
+        #dest_dir = "/home/boris/projects/gpx-heatmap/heatmap/gpx"
+        dest_dir = "/heatmap/gpx"
+        shutil.copy(gpxfile,dest_dir)
+        return True
+    except Exception as e: 
+        logToFile(str(e))
         logToFile("copyGPXToHeatmapFolder failed")
         pass
+    return False
 
 def tryToRemoveFile(file):
     try:
         os.remove(file)
-    except:
+    except Exception as e: 
+        logToFile(str(e))
         logToFile("removing gpx file failed.")
         pass
 
@@ -160,7 +166,8 @@ def getActivityID():
     try:
         activity_id = activity_id.split("https://www.strava.com/activities/")[1].replace(" ","")
         return activity_id
-    except:
+    except Exception as e: 
+        logToFile(str(e))
         pass
 
 
@@ -182,8 +189,8 @@ def downloadGPXFileFromActivityID(activity_id=None):
         return
     data_streams = get_data_stream(activity_id,header)
     writeGPX(output,activity,data_streams)
-    copyGPXToHeatmapFolder(output)
-    tryToRemoveFile(output)
+    if copyGPXToHeatmapFolder(output):
+        tryToRemoveFile(output)
 
 
 def getStravaData():
@@ -295,14 +302,16 @@ def connect_mqtt():
     #client = mqtt_client.Client(client_id)
     try:
         client = mqtt_client.Client(mqtt_client.CallbackAPIVersion.VERSION2,client_id)
-    except:
+    except Exception as e: 
+        logToFile(str(e))
         client = mqtt_client.Client(client_id)
     #client.username_pw_set(username, password)
     client.username_pw_set(login.user, login.pw)
     client.on_connect = on_connect
     try:
         client.connect(login.broker, login.port)
-    except:
+    except Exception as e: 
+        logToFile(str(e))
         pass
     return client
 
@@ -322,16 +331,17 @@ def publish(client):
 
 
 def downloadLastActivities(rides, downloadFiles):
-    upperrange = downloadFiles + 1
-    for i in range(1,upperrange):
-        loc = i*-1
+    upperrange = downloadFiles
+    for i in range(0,upperrange):
+        loc = i
         #print(rides.iloc[loc])
         id = rides.iloc[loc]["id"]
         print("trying to download ride with id: ",id)
         try:
             downloadGPXFileFromActivityID(id)
-        except:
-            print("error downloadin ride with id: ",id)
+        except Exception as e: 
+            logToFile(str(e))
+            print("error downloading ride with id: ",id)
             pass
     return 
 
