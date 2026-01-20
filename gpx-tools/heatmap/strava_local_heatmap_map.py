@@ -17,8 +17,7 @@ from folium.plugins import HeatMap
 
 import shutil
 # globals
-#HEATMAP_MAX_SIZE = (2160, 3840) # maximum heatmap size in pixel
-HEATMAP_MAX_SIZE = (2*2160, 2*3840) # maximum heatmap size in pixel
+HEATMAP_MAX_SIZE = (2160, 3840) # maximum heatmap size in pixel
 HEATMAP_MARGIN_SIZE = 32 # margin around heatmap trackpoints in pixel
 
 PLT_COLORMAP = 'hot' # matplotlib color map
@@ -78,22 +77,23 @@ def main(args: Namespace) -> None:
     copyFilesFromHAtoHeatmapGeneration()
 
     time.sleep(2)
-
     # read GPX trackpoints
     gpx_files = glob.glob('{}/{}'.format(args.dir,
                                          args.filter))
 
     if not gpx_files:
-        exit('ERROR no data matching {}/{}'.format(args.dir,
+        logstring = str('ERROR no data matching {}/{}'.format(args.dir,
                                                    args.filter))
+        logToFile(logstring)
+        exit(logstring)
 
-    if not isNewFileAvailable("lastfiles.txt",gpx_files):
+    if not isNewFileAvailable("/home/boris/projects/gpx-heatmap/heatmap/lastfiles.txt",gpx_files):
         print("nothing changed in gpx_files")
         logToFile("nothing changed in gpx_files")
 
         return
     
-    writeLastFileNames("lastfiles.txt",gpx_files)
+    writeLastFileNames("/home/boris/projects/gpx-heatmap/heatmap/lastfiles.txt",gpx_files)
     logToFile("new files, starting creation")
 
     gpx_files_count = 0
@@ -179,7 +179,7 @@ def main(args: Namespace) -> None:
         exit('ERROR zoom value too high, too many tiles to download')
 
     # download tiles
-    os.makedirs('tiles', exist_ok=True)
+    os.makedirs('/home/boris/projects/gpx-heatmap/heatmap/tiles', exist_ok=True)
     logToFile("starting to create tiles")
 
     supertile = np.zeros(((y_tile_max-y_tile_min+1)*OSM_TILE_SIZE,
@@ -190,7 +190,7 @@ def main(args: Namespace) -> None:
         for y in range(y_tile_min, y_tile_max+1):
             n += 1
 
-            tile_file = 'tiles/tile_{}_{}_{}.png'.format(zoom, x, y)
+            tile_file = '/home/boris/projects/gpx-heatmap/heatmap/tiles/tile_{}_{}_{}.png'.format(zoom, x, y)
 
             if not glob.glob(tile_file):
                 print('downloading tile {}/{}'.format(n, tile_count))
@@ -361,10 +361,10 @@ def main(args: Namespace) -> None:
 
         heat_map = HeatMap(heatmap_list,min_opacity=0.5,blur = 3,radius=3)
         heat_map.add_to(the_map_heatmap)
-        if not os.path.exists("templates"):
-            os.mkdir("templates")
+        if not os.path.exists("/home/boris/projects/gpx-heatmap/heatmap/templates"):
+            os.mkdir("/home/boris/projects/gpx-heatmap/heatmap/templates")
         #map_filename = os.path.join("templates","map.html")
-        heatmap_filename = os.path.join("templates","heatmap.html")
+        heatmap_filename = os.path.join("/home/boris/projects/gpx-heatmap/heatmap/templates","heatmap.html")
         #the_map.save(map_filename)
         heat_map.save(heatmap_filename)
         print('Saved {}'.format(heatmap_filename))
@@ -374,10 +374,43 @@ def main(args: Namespace) -> None:
 
         #print('Saved {}'.format(csv_file))
 
-    time.sleep(3)
+    time.sleep(2)
+    overlayFileTimeStamp("heatmap.png")
     copyHeatmapToHA()
     removeGPXFilesFromHA()
     return
+
+def overlayFileTimeStamp(fileName):
+    from PIL import Image, ImageDraw, ImageFont
+    try:
+        fontSize = 15
+        topLeftWidthDivider = 10 # increase to make the textbox shorter in width
+        topLeftHeightDivider = 45 # increase to make the textbox shorter in height
+        textPadding = 2 # 
+        mydir = "/home/boris/projects/gpx-heatmap/heatmap/"
+        fileName2 = fileName.split('.')
+        fileInfo = os.stat(mydir + fileName)
+        timeInfo = time.strftime("%d.%m.%Y", time.localtime(fileInfo.st_mtime))
+        print(fileName + ": " + timeInfo)
+        
+        im = Image.open(mydir + fileName)
+        #myfont = ImageFont.truetype(fontFile, fontSize)
+        topLeftWidth = int(im.size[0] - (im.size[0] / topLeftWidthDivider))
+        topLeftHeight = int(im.size[1] - (im.size[1] / topLeftHeightDivider))
+        draw = ImageDraw.Draw(im)
+        draw.rectangle([topLeftWidth, topLeftHeight, im.size[0], im.size[1]], fill="grey")
+        #draw.text([topLeftWidth + textPadding, topLeftHeight + textPadding], timeInfo, fill="lime", font=myfont)
+        draw.text([topLeftWidth + textPadding, topLeftHeight + textPadding], timeInfo, fill="white")
+        del draw
+        
+        #write image
+        im.save(mydir + fileName2[0] + ".png", 'PNG')
+
+
+    except Exception as e: 
+        logToFile(str(e))
+        logToFile("overlaying timestamp failed")
+        pass
 
 def copyFilesFromHAtoHeatmapGeneration():
     try:
@@ -385,14 +418,15 @@ def copyFilesFromHAtoHeatmapGeneration():
         src_dir = "/mnt/homeassistant/www/gpx/"
         for file in glob.glob(src_dir+r'*.gpx'):
             print("copying file from homeassistant: ",file)
-            logToFile("Saved heatmap")
+            logToFile("copying file from homeassistant: " + str(file))
 
             newfile = file.split(src_dir)[1]
 
             newfile = os.path.join(dest_dir,newfile)
 
             shutil.copyfile(file, newfile)
-    except:
+    except Exception as e: 
+        logToFile(str(e))
         logToFile("copying from HA to heatmap generation failed")
 
         pass
@@ -402,16 +436,18 @@ def removeGPXFilesFromHA():
         for file in glob.glob(src_dir+r'*.gpx'):
             print("removing file from homeassistant: ",file)
             os.remove(file)
-    except:
+    except Exception as e: 
+        logToFile(str(e))
         logToFile("removing from HA gpx folder failed")
 
         pass
 
 def copyHeatmapToHA():
     try:
-        shutil.copyfile("/home/boris/projects/gpx-heatmap/heatmap/heatmap.png","/mnt/homeassistant/www/heatmap.png")
-        shutil.copyfile("/home/boris/projects/gpx-heatmap/heatmap/templates/heatmap.html","/mnt/homeassistant/www/heatmap.html")
-    except:
+       shutil.copyfile("/home/boris/projects/gpx-heatmap/heatmap/templates/heatmap.html","/mnt/homeassistant/www/heatmap.html") 
+       shutil.copyfile("/home/boris/projects/gpx-heatmap/heatmap/heatmap.png","/mnt/homeassistant/www/heatmap.png")
+    except Exception as e: 
+        logToFile(str(e))
         logToFile("copyHeatmapToHA failed")
         pass
 
@@ -468,7 +504,7 @@ def getFoliumColorNameFromHeatmapScore(score):
     return name
 
 def logToFile(log):
-    f = open("log.txt", "a",encoding='UTF-8')
+    f = open("/home/boris/projects/gpx-heatmap/heatmap/log.txt", "a",encoding='UTF-8')
     f.write(str(datetime.now()))
     f.write(": ")
     f.write(log + os.linesep)
@@ -478,7 +514,7 @@ if __name__ == '__main__':
     parser = ArgumentParser(description='Generate a PNG heatmap from local Strava GPX files',
                             epilog='Report issues to https://github.com/remisalmon/Strava-local-heatmap/issues')
 
-    parser.add_argument('--dir', default='gpx',
+    parser.add_argument('--dir', default='/home/boris/projects/gpx-heatmap/heatmap/gpx',
                         help='GPX files directory  (default: gpx)')
     parser.add_argument('--filter', default='*.gpx',
                         help='GPX files glob filter (default: *.gpx)')
@@ -486,7 +522,7 @@ if __name__ == '__main__':
                         help='GPX files year(s) filter (default: all)')
     parser.add_argument('--bounds', type=float, nargs=4, metavar='BOUND', default=[-90.0, +90.0, -180.0, +180.0],
                         help='heatmap bounding box as lat_min, lat_max, lon_min, lon_max (default: -90 +90 -180 +180)')
-    parser.add_argument('--output', default='heatmap.png',
+    parser.add_argument('--output', default='/home/boris/projects/gpx-heatmap/heatmap/heatmap.png',
                         help='heatmap name (default: heatmap.png)')
     parser.add_argument('--zoom', type=int, default=-1,
                         help='heatmap zoom level 0-19 or -1 for auto (default: -1)')
