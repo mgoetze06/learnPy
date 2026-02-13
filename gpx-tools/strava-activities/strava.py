@@ -14,6 +14,116 @@ import shutil
 import os
 from paho.mqtt import client as mqtt_client
 
+def copyStravaAnalyseToHA(filename):
+    try:
+       shutil.copyfile("/home/boris/projects/gpx-heatmap/heatmap/"+filename,"/mnt/homeassistant/www/"+filename)
+
+    except Exception as e: 
+        logToFile(str(e))
+        logToFile("copyStravaAnalyseToHA failed")
+
+        pass
+
+def sortDataframeByKey(df,key):
+    df = df.sort_values(by=[key], ascending=False)
+    return df
+
+def getLeaderboardScoreByActivityID(df,currentID):
+    #data = df.iloc[[df['id'] == currentID]]
+    fastest = df['average_speed'].max()
+    current = df[df['id'] == currentID]['average_speed'].max()
+    speedDifference = fastest - current
+    #data = df.iloc[:, 10] == currentID
+    data = df.loc[:,'id'] == currentID
+    booleanArray = data.to_numpy()
+    for i,idx in enumerate(range(len(booleanArray))):
+        if booleanArray[i] == True:
+            return idx,len(booleanArray),speedDifference,fastest,current
+    #data = df.index.get_loc(df[['id'] == currentID].index[0])
+    return data
+def getBaseHtmlString():
+    base_html_string = '''<!DOCTYPE html>
+    <html>
+    <head>
+        <title>Strava Analyse</title>
+        <style>
+            table {
+            width: 100%;
+            text-align: center;
+            thead th {
+                background-color: #A2A2A2; 
+            }
+            tbody tr:nth-child(odd) {
+                background-color: #f2f2f2; 
+            }
+            tbody tr:nth-child(even) {
+                background-color: #ffffff; 
+            }}
+        </style>
+    </head>
+    <body>
+        
+        <p><b>Top 3 dieses Jahr</b></p>
+        <div>
+            <topThreeCurrentYear>
+        </div>
+        
+        <p><b>Top 3 gesamter Zeitraum</b></p>
+        <div>
+            <topThreeAlltime>
+        </div>
+        <p><b>Letzte Fahrt</b></p>
+        <div>
+            <lastRide>
+        </div>
+        <p><b>https://www.strava.com/activities/id </b></p>
+    </body>
+    </html>
+    '''
+    return base_html_string
+def getHtmlFromPandasDataframe(df,columns,lines):
+    topThree = df[columns].head(lines)
+    html = topThree.to_html(render_links=True, escape=True)
+    html = replacePandasHtmlString(html)
+    html = replaceTableHeaders(html)
+    return html
+     
+
+def replacePandasHtmlString(input):
+    return input.replace('\n','').replace("border=\"1\"","").replace("style=\"text-align: right;\"","")
+
+def replaceTableHeaders(input):
+    newString = input.replace('distance', 'Distanz [km]')
+    newString = newString.replace('average_speed', 'Durchschnittsgeschw. [km/h]')
+    newString = newString.replace('start_date_local', 'Startzeit')
+    newString = newString.replace('id', 'Strava ID')
+    return newString
+
+def createLastRideString(current_year_rides_df,rides_df,current_year):
+    #print(getLeaderboardScore(sorted,17096086975))
+    #currentID = rides_df.loc[0]['id']
+    currentID = rides_df['id'].iloc[0]
+
+    sortedCurrentYear = sortDataframeByKey(current_year_rides_df,'average_speed')
+    sortedAllTime = sortDataframeByKey(rides_df,'average_speed')
+    dataframeID,totalRides, speedDifference, fastest,current = getLeaderboardScoreByActivityID(sortedCurrentYear,currentID)
+    topPerecent = round(((dataframeID+1) / totalRides) * 100)
+
+    lastRideString = ""
+    lastRideString = lastRideString + f"{rides_df['name'].iloc[0]} {rides_df['start_date_local'].iloc[0]}"+ "<br>"
+
+    lastRideString = lastRideString + f"Durchschnittsgeschwindigkeit \t {round(current,2)} km/h" + "<br>"
+    #print(f"Durchschnittsgeschwindigkeit \t {round(current,2)} km/h")
+    #print(f"Dieses Jahr {current_year}  \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h") 
+    lastRideString = lastRideString + f"Dieses Jahr {current_year}  \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h"  + "<br>"
+
+    dataframeID,totalRides, speedDifference, fastest,current = getLeaderboardScoreByActivityID(sortedAllTime,currentID)
+    topPerecent = round(((dataframeID+1) / totalRides) * 100)
+
+    #print(f"Alltime  \t \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h")
+    lastRideString = lastRideString + f"Alltime  \t \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h"  + "<br>"
+    return lastRideString, sortedCurrentYear, sortedAllTime
+
 def logToFile(log):
     f = open("log.txt", "a",encoding='UTF-8')
     f.write(str(datetime.now()))
@@ -120,8 +230,8 @@ def writeGPX(output,activity,data_streams):
 
 def fileExistsHeatmapFolder(filename):
     try:
-        #destdir = "/home/boris/projects/gpx-heatmap/heatmap/gpx/"
-        destdir = "/heatmap/gpx/"
+        destdir = "/home/boris/projects/gpx-heatmap/heatmap/gpx/"
+        #destdir = "/heatmap/gpx/"
         fullPath = destdir + filename
         return os.path.isfile(fullPath)
     except:
@@ -136,8 +246,8 @@ def fileExistsLocalFolder(filename):
 
 def copyGPXToHeatmapFolder(gpxfile):
     try:
-        #dest_dir = "/home/boris/projects/gpx-heatmap/heatmap/gpx"
-        dest_dir = "/heatmap/gpx"
+        dest_dir = "/home/boris/projects/gpx-heatmap/heatmap/gpx"
+        #dest_dir = "/heatmap/gpx"
         shutil.copy(gpxfile,dest_dir)
         return True
     except Exception as e: 
@@ -345,19 +455,43 @@ def downloadLastActivities(rides, downloadFiles):
             pass
     return 
 
+def createStravaAnalyseHtml(filename,rides):
+    base_html_string = getBaseHtmlString()
+    
+    now = datetime.now()
+    current_month = now.strftime("%Y-%m")
+    current_year = now.strftime("%Y")
+    current_month_rides = rides[rides['start_date_local'].str.contains(current_month, na=False)]
+    current_year_rides = rides[rides['start_date_local'].str.contains(current_year, na=False)]
+
+    lastRideString, sortedCurrentYear, sortedAllTime = createLastRideString(current_year_rides,rides,current_year)
+    columns = ["id","start_date_local", "average_speed","distance"]
+    html_string = getHtmlFromPandasDataframe(sortedCurrentYear,columns,3)
+    html = base_html_string.replace("<topThreeCurrentYear>",html_string)
+    html_string = getHtmlFromPandasDataframe(sortedAllTime,columns,3)
+    html = html.replace("<topThreeAlltime>",html_string)
+
+    html = html.replace("<lastRide>",lastRideString)
+    with open(filename, 'w') as f:
+        f.write(html)
+        f.close()
+    
+    copyStravaAnalyseToHA(filename)
+
 
 def run():
-    while True:
-        client = connect_mqtt()
-        client.loop_start()
-        rides = publish(client)
-        client.loop_stop()
+    #while True:
+    client = connect_mqtt()
+    client.loop_start()
+    rides = publish(client)
+    client.loop_stop()
 
-        downloadLastActivities(rides,3)
-        print("entering sleep")
-        time.sleep(60*60*6)
-        #time.sleep(20)
-        print("exiting from sleep")
+    downloadLastActivities(rides,3)
+    createStravaAnalyseHtml('strava_analyse.html',rides)
+        # print("entering sleep")
+        # time.sleep(60*60*6)
+        # #time.sleep(20)
+        # print("exiting from sleep")
 
 
 if __name__ == '__main__':
