@@ -457,7 +457,8 @@ def downloadLastActivities(rides, downloadFiles):
 
 def createStravaAnalyseHtml(filename,rides):
     base_html_string = getBaseHtmlString()
-    
+    rides['average_speed'] = round(rides['average_speed'] *3.6,2)
+    rides['distance'] = round(rides['distance'] / 1000,2)
     now = datetime.now()
     current_month = now.strftime("%Y-%m")
     current_year = now.strftime("%Y")
