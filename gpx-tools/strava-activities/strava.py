@@ -99,9 +99,13 @@ def replaceTableHeaders(input):
     newString = newString.replace('id', 'Strava ID')
     return newString
 
-def createLastRideString(current_year_rides_df,rides_df,current_year):
+def createLastRideString(current_year_rides_df,rides_df,current_year,now=None):
     #print(getLeaderboardScore(sorted,17096086975))
     #currentID = rides_df.loc[0]['id']
+
+    if now == None:
+        now = datetime.now()
+
     currentID = rides_df['id'].iloc[0]
 
     sortedCurrentYear = sortDataframeByKey(current_year_rides_df,'average_speed')
@@ -122,6 +126,7 @@ def createLastRideString(current_year_rides_df,rides_df,current_year):
 
     #print(f"Alltime  \t \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h")
     lastRideString = lastRideString + f"Alltime  \t \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h"  + "<br>"
+    lastRideString = lastRideString + f"Zeitstempel: {str(now)}"
     return lastRideString, sortedCurrentYear, sortedAllTime
 
 def logToFile(log):
@@ -465,8 +470,8 @@ def createStravaAnalyseHtml(filename,rides):
     current_month_rides = rides[rides['start_date_local'].str.contains(current_month, na=False)]
     current_year_rides = rides[rides['start_date_local'].str.contains(current_year, na=False)]
 
-    lastRideString, sortedCurrentYear, sortedAllTime = createLastRideString(current_year_rides,rides,current_year)
-    columns = ["id","start_date_local", "average_speed","distance"]
+    lastRideString, sortedCurrentYear, sortedAllTime = createLastRideString(current_year_rides,rides,current_year,now)
+    columns = ["average_speed","distance","id","start_date_local" ]
     html_string = getHtmlFromPandasDataframe(sortedCurrentYear,columns,3)
     html = base_html_string.replace("<topThreeCurrentYear>",html_string)
     html_string = getHtmlFromPandasDataframe(sortedAllTime,columns,3)
