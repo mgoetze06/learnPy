@@ -123,15 +123,17 @@ def createLastRideString(current_year_rides_df,rides_df,current_year,now=None):
     lastRideString = lastRideString + f"Durchschnittsgeschwindigkeit \t {round(current,2)} km/h" + "<br>"
     #print(f"Durchschnittsgeschwindigkeit \t {round(current,2)} km/h")
     #print(f"Dieses Jahr {current_year}  \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h") 
-    lastRideString = lastRideString + f"Dieses Jahr {current_year}  \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h"  + "<br>"
+    thisYearMessageHtml = f"Dieses Jahr {current_year}  \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h" 
+    thisYearMessage = f"{current_year}: {dataframeID+1} von {totalRides} (Top {topPerecent} %) Diff. schnellste Fahrt ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h" 
 
+    lastRideString = lastRideString + thisYearMessageHtml  + "<br>"
     dataframeID,totalRides, speedDifference, fastest,current = getLeaderboardScoreByActivityID(sortedAllTime,currentID)
     topPerecent = round(((dataframeID+1) / totalRides) * 100)
 
     #print(f"Alltime  \t \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h")
     lastRideString = lastRideString + f"Alltime  \t \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h"  + "<br>"
     lastRideString = lastRideString + f"Zeitstempel: {str(now)}"
-    return lastRideString, sortedCurrentYear, sortedAllTime
+    return lastRideString, sortedCurrentYear, sortedAllTime,thisYearMessage
 
 def logToFile(log):
     f = open("log.txt", "a",encoding='UTF-8')
@@ -438,15 +440,21 @@ def connect_mqtt():
 def publish(client):
     timestamp,distance_all,distance_month,distance_year,average_speed_month,average_distance_month,max_average_speed,rides = getStravaData()
     MQTT_MSG=json.dumps({"timestamp": timestamp,"distance_all": distance_all,"distance_month":  distance_month,"distance_year": distance_year,"average_speed_month": average_speed_month,"average_distance_month": average_distance_month,"max_average_speed": max_average_speed});
-    result = client.publish(login.topic, MQTT_MSG)
+    publichMQTT(client,MQTT_MSG,login.topic)
+    return rides
+
+def publishLastRideMessage(client,topic, message):
+    MQTT_MSG=json.dumps({"message": message});
+    publichMQTT(client,MQTT_MSG,topic)
+
+def publichMQTT(client,MQTT_MSG,topic):
+    result = client.publish(topic, MQTT_MSG)
     # result: [0, 1]
     status = result[0]
     if status == 0:
-        print(f"Send `{MQTT_MSG}` to topic `{login.topic}`")
+        print(f"Send `{MQTT_MSG}` to topic `{topic}`")
     else:
-        print(f"Failed to send message to topic {login.topic}")
-
-    return rides
+        print(f"Failed to send message to topic {topic}")
 
 
 def downloadLastActivities(rides, downloadFiles):
@@ -475,7 +483,7 @@ def createStravaAnalyseHtml(filename,rides):
     current_month_rides = rides[rides['start_date_local'].str.contains(current_month, na=False)]
     current_year_rides = rides[rides['start_date_local'].str.contains(current_year, na=False)]
 
-    lastRideString, sortedCurrentYear, sortedAllTime = createLastRideString(current_year_rides,rides,current_year,now)
+    lastRideString, sortedCurrentYear, sortedAllTime,lastRideMessage = createLastRideString(current_year_rides,rides,current_year,now)
     columns = ["average_speed","distance","id","start_date_local" ]
     html_string = getHtmlFromPandasDataframe(sortedCurrentYear,columns,3)
     html = base_html_string.replace("<topThreeCurrentYear>",html_string)
@@ -491,16 +499,19 @@ def createStravaAnalyseHtml(filename,rides):
     
     copyStravaAnalyseToHA(filename)
 
+    return lastRideMessage
+
 
 def run():
     #while True:
     client = connect_mqtt()
     client.loop_start()
     rides = publish(client)
+    lastRideMessage = createStravaAnalyseHtml('strava_analyse.html',rides)
+    publishLastRideMessage(client,login.topicMessage,lastRideMessage)
     client.loop_stop()
 
     downloadLastActivities(rides,3)
-    createStravaAnalyseHtml('strava_analyse.html',rides)
         # print("entering sleep")
         # time.sleep(60*60*6)
         # #time.sleep(20)
