@@ -14,6 +14,9 @@ import shutil
 import os
 from paho.mqtt import client as mqtt_client
 
+def getFullStravaAnalyseFilename(filename):
+    return "/home/boris/projects/gpx-heatmap/heatmap/"+filename
+
 def copyStravaAnalyseToHA(filename):
     try:
        shutil.copyfile("/home/boris/projects/gpx-heatmap/heatmap/"+filename,"/mnt/homeassistant/www/"+filename)
@@ -46,6 +49,7 @@ def getBaseHtmlString():
     <html>
     <head>
         <title>Strava Analyse</title>
+        <meta http-equiv="refresh" content="15">
         <style>
             table {
             width: 100%;
@@ -461,6 +465,7 @@ def downloadLastActivities(rides, downloadFiles):
     return 
 
 def createStravaAnalyseHtml(filename,rides):
+    fullFilename = getFullStravaAnalyseFilename(filename)
     base_html_string = getBaseHtmlString()
     rides['average_speed'] = round(rides['average_speed'] *3.6,2)
     rides['distance'] = round(rides['distance'] / 1000,2)
@@ -478,7 +483,9 @@ def createStravaAnalyseHtml(filename,rides):
     html = html.replace("<topThreeAlltime>",html_string)
 
     html = html.replace("<lastRide>",lastRideString)
-    with open(filename, 'w') as f:
+    if os.path.exists(fullFilename):
+        os.remove(fullFilename)
+    with open(fullFilename, 'w') as f:
         f.write(html)
         f.close()
     
