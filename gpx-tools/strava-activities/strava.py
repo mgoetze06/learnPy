@@ -31,10 +31,10 @@ def sortDataframeByKey(df,key):
     df = df.sort_values(by=[key], ascending=False)
     return df
 
-def getLeaderboardScoreByActivityID(df,currentID):
+def getLeaderboardScoreByActivityID(df,currentID,key):
     #data = df.iloc[[df['id'] == currentID]]
-    fastest = df['average_speed'].max()
-    current = df[df['id'] == currentID]['average_speed'].max()
+    fastest = df[key].max()
+    current = df[df['id'] == currentID][key].max()
     speedDifference = fastest - current
     #data = df.iloc[:, 10] == currentID
     data = df.loc[:,'id'] == currentID
@@ -112,9 +112,10 @@ def createLastRideString(current_year_rides_df,rides_df,current_year,now=None):
 
     currentID = rides_df['id'].iloc[0]
 
-    sortedCurrentYear = sortDataframeByKey(current_year_rides_df,'average_speed')
-    sortedAllTime = sortDataframeByKey(rides_df,'average_speed')
-    dataframeID,totalRides, speedDifference, fastest,current = getLeaderboardScoreByActivityID(sortedCurrentYear,currentID)
+    key = 'average_speed'
+    sortedCurrentYear = sortDataframeByKey(current_year_rides_df,key)
+    sortedAllTime = sortDataframeByKey(rides_df,key)
+    dataframeID,totalRides, speedDifference, fastest,current = getLeaderboardScoreByActivityID(sortedCurrentYear,currentID,key)
     topPerecent = round(((dataframeID+1) / totalRides) * 100)
 
     lastRideString = ""
@@ -124,16 +125,32 @@ def createLastRideString(current_year_rides_df,rides_df,current_year,now=None):
     #print(f"Durchschnittsgeschwindigkeit \t {round(current,2)} km/h")
     #print(f"Dieses Jahr {current_year}  \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h") 
     thisYearMessageHtml = f"Dieses Jahr {current_year}  \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h" 
-    thisYearMessage = f"{current_year}: {dataframeID+1} von {totalRides} (Top {topPerecent} %) Diff. schnellste Fahrt ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h" 
+    #date = now.strftime("%Y%m%d %H:%M")
+    thisRideSummary = f"{str(rides_df['start_date_local'].iloc[0]).replace('T',' ').replace('Z',' ')} {rides_df['distance'].iloc[0]} km {round(rides_df['moving_time'].iloc[0]/60)} min {current} km/h"
+    thisYearMessage = thisRideSummary + f" ----- {current_year}: {dataframeID+1} von {totalRides} Top {topPerecent} % Abstand {round(speedDifference,2)} km/h zu {round(fastest,2)} km/h" 
 
     lastRideString = lastRideString + thisYearMessageHtml  + "<br>"
-    dataframeID,totalRides, speedDifference, fastest,current = getLeaderboardScoreByActivityID(sortedAllTime,currentID)
+    dataframeID,totalRides, speedDifference, fastest,current = getLeaderboardScoreByActivityID(sortedAllTime,currentID,key)
     topPerecent = round(((dataframeID+1) / totalRides) * 100)
 
     #print(f"Alltime  \t \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h")
     lastRideString = lastRideString + f"Alltime  \t \t\t Platz: {dataframeID+1} von {totalRides}\t(Top {topPerecent} %) mit einer Geschwindigkeitsdifferenz zum Schnellsten ({round(fastest,2)} km/h) von {round(speedDifference,2)} km/h"  + "<br>"
     lastRideString = lastRideString + f"Zeitstempel: {str(now)}"
     return lastRideString, sortedCurrentYear, sortedAllTime,thisYearMessage
+
+def createLastRideMessageDistance(current_year_rides_df,rides_df,current_year,now=None):
+    if now == None:
+        now = datetime.now()
+
+    currentID = rides_df['id'].iloc[0]
+    key = 'distance'
+    sortedCurrentYear = sortDataframeByKey(current_year_rides_df,key)
+    sortedAllTime = sortDataframeByKey(rides_df,key)
+    dataframeID,totalRides, speedDifference, fastest,current = getLeaderboardScoreByActivityID(sortedCurrentYear,currentID,key)
+    topPerecent = round(((dataframeID+1) / totalRides) * 100)
+    thisRideSummary = f"{str(rides_df['start_date_local'].iloc[0]).replace('T',' ').replace('Z',' ')} {rides_df['distance'].iloc[0]} km {round(rides_df['moving_time'].iloc[0]/60)} min {round(rides_df['average_speed'].iloc[0],2)} km/h"
+    thisYearMessage = thisRideSummary + f" ----- {current_year}: {dataframeID+1} von {totalRides} Top {topPerecent} % Abstand {round(speedDifference,2)} km zu {round(fastest,2)} km" 
+    return thisYearMessage
 
 def logToFile(log):
     f = open("log.txt", "a",encoding='UTF-8')
@@ -484,6 +501,8 @@ def createStravaAnalyseHtml(filename,rides):
     current_year_rides = rides[rides['start_date_local'].str.contains(current_year, na=False)]
 
     lastRideString, sortedCurrentYear, sortedAllTime,lastRideMessage = createLastRideString(current_year_rides,rides,current_year,now)
+    lastRideMessageDistance = createLastRideMessageDistance(current_year_rides,rides,current_year,now)
+    lastRideString = lastRideString + "<br>" + lastRideMessageDistance
     columns = ["average_speed","distance","id","start_date_local" ]
     html_string = getHtmlFromPandasDataframe(sortedCurrentYear,columns,3)
     html = base_html_string.replace("<topThreeCurrentYear>",html_string)
@@ -491,15 +510,18 @@ def createStravaAnalyseHtml(filename,rides):
     html = html.replace("<topThreeAlltime>",html_string)
 
     html = html.replace("<lastRide>",lastRideString)
-    if os.path.exists(fullFilename):
-        os.remove(fullFilename)
-    with open(fullFilename, 'w') as f:
-        f.write(html)
-        f.close()
-    
-    copyStravaAnalyseToHA(filename)
+    try:
+        if os.path.exists(fullFilename):
+            os.remove(fullFilename)
+        with open(fullFilename, 'w') as f:
+            f.write(html)
+            f.close()
+        
+        copyStravaAnalyseToHA(filename)
+    except:
+        pass
 
-    return lastRideMessage
+    return lastRideMessage,lastRideMessageDistance
 
 
 def run():
@@ -507,8 +529,10 @@ def run():
     client = connect_mqtt()
     client.loop_start()
     rides = publish(client)
-    lastRideMessage = createStravaAnalyseHtml('strava_analyse.html',rides)
-    publishLastRideMessage(client,login.topicMessage,lastRideMessage)
+    lastRideMessageSpeed,lastRideMessageDistance = createStravaAnalyseHtml('strava_analyse.html',rides)
+    publishLastRideMessage(client,login.topicMessage,lastRideMessageSpeed)
+    publishLastRideMessage(client,login.topicMessageDistance,lastRideMessageDistance)
+
     client.loop_stop()
 
     downloadLastActivities(rides,3)
