@@ -85,6 +85,60 @@ def getBaseHtmlString():
     </html>
     '''
     return base_html_string
+
+def getNewBaseHtmlString():
+    return '''<!DOCTYPE html>
+<html>
+<head>
+    <title>Strava Analyse</title>
+    <meta http-equiv="refresh" content="15">
+    <meta charset="UTF-8">
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; background-color: #f0f2f5; margin: 0; padding: 10px; color: #333; }
+        .card { background: white; border-radius: 10px; box-shadow: 0 2px 6px rgba(0,0,0,0.08); padding: 10px 12px; margin-bottom: 10px; }
+        .card h2 { color: #FC4C02; font-size: 0.85em; margin: 0 0 8px 0; padding-bottom: 5px; border-bottom: 2px solid #FC4C02; display: flex; align-items: center; gap: 5px; }
+        .badge { display: inline-block; background: #FC4C02; color: white; border-radius: 10px; padding: 1px 7px; font-size: 0.7em; font-weight: 600; }
+        .timestamp { text-align: right; font-size: 0.62em; color: #aaa; margin-top: 8px; }
+        .top3-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+        .top3-item { background: #fff5f2; border-left: 3px solid #FC4C02; border-radius: 5px; padding: 7px 8px; display: flex; flex-direction: column; gap: 4px; cursor: pointer; transition: background 0.2s; text-decoration: none; color: inherit; min-width: 0; }
+        .top3-item:hover { background: #ffe5dc; }
+        .top3-header { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+        .top3-medal { font-size: 0.95em; }
+        .top3-date { font-size: 0.5em; color: #999; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .top3-divider { border: none; border-top: 1px solid #f0d5cc; margin: 1px 0; }
+        .top3-stats-row { display: flex; flex-direction: column; gap: 2px; }
+        .top3-stat { display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 2px; min-width: 0; }
+        .top3-stat .label { font-size: 0.42em; color: #888; text-transform: uppercase; white-space: nowrap; }
+        .top3-stat .value { font-size: 0.72em; font-weight: 700; color: #FC4C02; text-align: right; white-space: nowrap; }
+        .top3-stat .unit { font-size: 0.42em; color: #555; white-space: nowrap; }
+        .last-ride-item { background: #fff5f2; border-left: 3px solid #FC4C02; border-radius: 5px; padding: 8px 10px; cursor: pointer; transition: background 0.2s; }
+        .last-ride-item:hover { background: #ffe5dc; }
+        .last-ride-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 8px; text-align: center; }
+        .last-ride-stat { display: flex; flex-direction: column; align-items: center; }
+        .last-ride-stat .label { font-size: 0.58em; color: #888; text-transform: uppercase; }
+        .last-ride-stat .value { font-size: 1em; font-weight: 700; color: #FC4C02; }
+        .last-ride-stat .unit { font-size: 0.62em; color: #555; }
+        .last-ride-divider { border: none; border-top: 1px solid #f0d5cc; margin: 6px 0; }
+        .rank-info { font-size: 0.72em; line-height: 1.7; color: #444; }
+        .rank-info span.highlight { color: #FC4C02; font-weight: 600; }
+        @media (max-width: 400px) { .last-ride-stats { grid-template-columns: repeat(2, 1fr); } }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <h2>🏆 Top 3 dieses Jahr</h2>
+        <div class="top3-grid"><topThreeCurrentYear></div>
+    </div>
+    <div class="card">
+        <h2>🥇 Top 3 gesamter Zeitraum</h2>
+        <div class="top3-grid"><topThreeAlltime></div>
+    </div>
+    <div class="card">
+        <lastRide>
+    </div>
+</body>
+</html>'''
+
 def getHtmlFromPandasDataframe(df,columns,lines):
     topThree = df[columns].head(lines)
     html = topThree.to_html(render_links=True, escape=True)
@@ -102,6 +156,94 @@ def replaceTableHeaders(input):
     newString = newString.replace('start_date_local', 'Startzeit')
     newString = newString.replace('id', 'Strava ID')
     return newString
+
+def getTop3HtmlItems(df, n=3):
+    medals = ['🥇', '🥈', '🥉']
+    html = ''
+    for i, (_, row) in enumerate(df.head(n).iterrows()):
+        medal = medals[i] if i < len(medals) else str(i+1)
+        activity_id = row['id']
+        date = str(row['start_date_local']).replace('T', ' ').replace('Z', '').strip()[:16]
+        speed = round(row['average_speed'], 2)
+        distance = round(row['distance'], 2)
+        html += f'''
+            <a class="top3-item" href="https://www.strava.com/activities/{activity_id}" target="_blank">
+                <div class="top3-header">
+                    <div class="top3-medal">{medal}</div>
+                    <div class="top3-date">{date}</div>
+                </div>
+                <hr class="top3-divider">
+                <div class="top3-stats-row">
+                    <div class="top3-stat">
+                        <div class="label">G</div>
+                        <div class="value">{speed}</div>
+                        <div class="unit">km/h</div>
+                    </div>
+                    <div class="top3-stat">
+                        <div class="label">D</div>
+                        <div class="value">{distance}</div>
+                        <div class="unit">km</div>
+                    </div>
+                </div>
+            </a>'''
+    return html
+    
+def createLastRideHtmlSection(rides_df, current_year_rides_df, sortedCurrentYear, sortedAllTime, current_year, now):
+    currentID = rides_df['id'].iloc[0]
+    key = 'average_speed'
+
+    # Speed rankings
+    dataframeID_year, totalRides_year, speedDiff_year, fastest_year, current_speed = getLeaderboardScoreByActivityID(sortedCurrentYear, currentID, key)
+    topPercent_year = round(((dataframeID_year + 1) / totalRides_year) * 100)
+
+    dataframeID_all, totalRides_all, speedDiff_all, fastest_all, _ = getLeaderboardScoreByActivityID(sortedAllTime, currentID, key)
+    topPercent_all = round(((dataframeID_all + 1) / totalRides_all) * 100)
+
+    # Distance ranking (current year)
+    sortedByDist = sortDataframeByKey(current_year_rides_df, 'distance')
+    distID, distTotal, _, _, currentDist = getLeaderboardScoreByActivityID(sortedByDist, currentID, 'distance')
+    yearTotalDist = round(sum(current_year_rides_df['distance']), 2)
+
+    activity_id = rides_df['id'].iloc[0]
+    name = rides_df['name'].iloc[0]
+    start_raw = str(rides_df['start_date_local'].iloc[0]).replace('T', ' ').replace('Z', '').strip()
+    start_date = start_raw[:10]
+    start_time = start_raw[11:16] if len(start_raw) > 10 else ''
+    duration_min = round(rides_df['moving_time'].iloc[0] / 60)
+    speed = round(current_speed, 2)
+    distance = round(rides_df['distance'].iloc[0], 2)
+
+    html = f'''
+        <h2>🚵 Letzte Fahrt &nbsp;<span class="badge">{name}</span></h2>
+        <div class="last-ride-item" onclick="window.open('https://www.strava.com/activities/{activity_id}','_blank')">
+            <div class="last-ride-stats">
+                <div class="last-ride-stat">
+                    <div class="label">Ø Geschw.</div>
+                    <div class="value">{speed} <span class="unit">km/h</span></div>
+                </div>
+                <div class="last-ride-stat">
+                    <div class="label">Distanz</div>
+                    <div class="value">{distance} <span class="unit">km</span></div>
+                </div>
+                <div class="last-ride-stat">
+                    <div class="label">Dauer</div>
+                    <div class="value">{duration_min} <span class="unit">min</span></div>
+                </div>
+                <div class="last-ride-stat">
+                    <div class="label">Start</div>
+                    <div class="value" style="font-size:0.8em;">{start_date}</div>
+                    <div class="unit">{start_time}</div>
+                </div>
+            </div>
+            <hr class="last-ride-divider">
+            <div class="rank-info">
+                <div>📅 <b>{current_year}:<br></b> Platz <span class="highlight">{dataframeID_year+1} / {totalRides_year}</span> &nbsp;|&nbsp; Top <span class="highlight">{topPercent_year} %</span> &nbsp;|&nbsp; Δ Schnellster: <span class="highlight">−{round(speedDiff_year,2)} km/h</span></div>
+                <div>🏅 <b>Alltime:<br></b> Platz <span class="highlight">{dataframeID_all+1} / {totalRides_all}</span> &nbsp;|&nbsp; Top <span class="highlight">{topPercent_all} %</span> &nbsp;|&nbsp; Δ Schnellster: <span class="highlight">−{round(speedDiff_all,2)} km/h</span></div>
+                <div>📏 <b>Jahres-Distanz:<br></b> <span class="highlight">{yearTotalDist} km</span> &nbsp;|&nbsp; Platz <span class="highlight">{distID+1} / {distTotal}</span></div>
+            </div>
+        </div>
+        <div class="timestamp">Zeitstempel: {now.strftime("%Y-%m-%d %H:%M:%S")}</div>'''
+    return html
 
 def createLastRideString(current_year_rides_df,rides_df,current_year,now=None):
     #print(getLeaderboardScore(sorted,17096086975))
@@ -489,39 +631,40 @@ def downloadLastActivities(rides, downloadFiles):
             pass
     return 
 
-def createStravaAnalyseHtml(filename,rides):
+def createStravaAnalyseHtml(filename, rides):
     fullFilename = getFullStravaAnalyseFilename(filename)
-    base_html_string = getBaseHtmlString()
-    rides['average_speed'] = round(rides['average_speed'] *3.6,2)
-    rides['distance'] = round(rides['distance'] / 1000,2)
+    rides['average_speed'] = round(rides['average_speed'] * 3.6, 2)
+    rides['distance'] = round(rides['distance'] / 1000, 2)
     now = datetime.now()
-    current_month = now.strftime("%Y-%m")
     current_year = now.strftime("%Y")
-    current_month_rides = rides[rides['start_date_local'].str.contains(current_month, na=False)]
+    current_month = now.strftime("%Y-%m")
     current_year_rides = rides[rides['start_date_local'].str.contains(current_year, na=False)]
 
-    lastRideString, sortedCurrentYear, sortedAllTime,lastRideMessage = createLastRideString(current_year_rides,rides,current_year,now)
-    lastRideMessageDistance = createLastRideMessageDistance(current_year_rides,rides,current_year,now)
-    lastRideString = lastRideString + "<br>" + lastRideMessageDistance
-    columns = ["average_speed","distance","id","start_date_local" ]
-    html_string = getHtmlFromPandasDataframe(sortedCurrentYear,columns,3)
-    html = base_html_string.replace("<topThreeCurrentYear>",html_string)
-    html_string = getHtmlFromPandasDataframe(sortedAllTime,columns,3)
-    html = html.replace("<topThreeAlltime>",html_string)
+    key = 'average_speed'
+    sortedCurrentYear = sortDataframeByKey(current_year_rides, key)
+    sortedAllTime = sortDataframeByKey(rides, key)
 
-    html = html.replace("<lastRide>",lastRideString)
+    # Build last ride message strings (kept for MQTT)
+    lastRideString, _, _, lastRideMessage = createLastRideString(current_year_rides, rides, current_year, now)
+    lastRideMessageDistance = createLastRideMessageDistance(current_year_rides, rides, current_year, now)
+
+    # Build new HTML
+    html = getNewBaseHtmlString()
+    html = html.replace('<topThreeCurrentYear>', getTop3HtmlItems(sortedCurrentYear))
+    html = html.replace('<topThreeAlltime>', getTop3HtmlItems(sortedAllTime))
+    html = html.replace('<lastRide>', createLastRideHtmlSection(rides, current_year_rides, sortedCurrentYear, sortedAllTime, current_year, now))
+
     try:
         if os.path.exists(fullFilename):
             os.remove(fullFilename)
-        with open(fullFilename, 'w') as f:
+        with open(fullFilename, 'w', encoding='utf-8') as f:
             f.write(html)
-            f.close()
-        
         copyStravaAnalyseToHA(filename)
-    except:
+    except Exception as e:
+        logToFile(str(e))
         pass
 
-    return lastRideMessage,lastRideMessageDistance
+    return lastRideMessage, lastRideMessageDistance
 
 
 def run():
