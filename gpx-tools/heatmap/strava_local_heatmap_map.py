@@ -26,6 +26,7 @@ OSM_TILE_SERVER = 'https://tile.openstreetmap.org/{}/{}/{}.png' # OSM tile url f
 OSM_TILE_SIZE = 256 # OSM tile size in pixel
 OSM_MAX_ZOOM = 19 # OSM maximum zoom level
 OSM_MAX_TILE_COUNT = 100 # maximum number of tiles to download
+BOUNDARY_MARGIN_DEG = 0.45 # degrees around previous bounds to consider "close"
 
 # functions
 def deg2xy(lat_deg: float, lon_deg: float, zoom: int) -> tuple[float, float]:
@@ -72,6 +73,81 @@ def gaussian_filter(image: np.ndarray, sigma: float) -> np.ndarray:
 
     return image
 
+
+def extract_gpx_points(gpx_file: str, year_filter: set[str] | None = None) -> list[tuple[float, float]]:
+    points: list[tuple[float, float]] = []
+    current_point: tuple[float, float] | None = None
+
+    with open(gpx_file, encoding='utf-8') as file:
+        for line in file:
+            if '<trkpt' in line:
+                parts = line.split('"')
+                if len(parts) >= 4:
+                    try:
+                        lat = float(parts[1])
+                        lon = float(parts[3])
+                        current_point = (lat, lon)
+                    except ValueError:
+                        current_point = None
+                else:
+                    current_point = None
+            elif current_point is not None and '<time' in line:
+                if year_filter is None:
+                    points.append(current_point)
+                else:
+                    year = line.split('>')[1][:4]
+                    if year in year_filter:
+                        points.append(current_point)
+                current_point = None
+
+    return points
+
+
+def bounds_from_points(points: list[tuple[float, float]]) -> tuple[float, float, float, float]:
+    latitudes = [p[0] for p in points]
+    longitudes = [p[1] for p in points]
+    return min(latitudes), max(latitudes), min(longitudes), max(longitudes)
+
+
+def points_close_to_bounds(points: list[tuple[float, float]],
+                           bounds: tuple[float, float, float, float],
+                           margin: float) -> bool:
+    lat_min, lat_max, lon_min, lon_max = bounds
+    for lat, lon in points:
+        if (
+            abs(lat - lat_min) <= margin or
+            abs(lat - lat_max) <= margin or
+            abs(lon - lon_min) <= margin or
+            abs(lon - lon_max) <= margin
+        ):
+            return True
+    return False
+
+
+def get_new_gpx_files(filename_lastfile: str, gpx_files: list[str]) -> list[str]:
+    if not os.path.exists(filename_lastfile):
+        return gpx_files
+
+    last_files: list[str] = []
+    with open(filename_lastfile, 'r', encoding='UTF-8') as file:
+        for line in file:
+            last_files.append(line.rstrip())
+
+    return [file for file in gpx_files if file not in last_files]
+
+
+def move_gpx_to_ausgelagert(gpx_file: str, base_dir: str) -> None:
+    target_dir = os.path.join(base_dir, 'ausgelagert')
+    os.makedirs(target_dir, exist_ok=True)
+    dest_file = os.path.join(target_dir, os.path.basename(gpx_file))
+    try:
+        shutil.move(gpx_file, dest_file)
+        print('Moved excluded file to ausgelagert: {}'.format(os.path.basename(gpx_file)))
+        logToFile('Moved excluded file to ausgelagert: {}'.format(gpx_file))
+    except Exception as e:
+        logToFile('Failed to move {} to ausgelagert: {}'.format(gpx_file, e))
+
+
 def main(args: Namespace) -> None:
     logToFile("start copying files from HA")
     copyFilesFromHAtoHeatmapGeneration()
@@ -87,46 +163,47 @@ def main(args: Namespace) -> None:
         logToFile(logstring)
         exit(logstring)
 
-    if not isNewFileAvailable("/home/boris/projects/gpx-heatmap/heatmap/lastfiles.txt",gpx_files):
+    new_gpx_files = get_new_gpx_files("/home/boris/projects/gpx-heatmap/heatmap/lastfiles.txt", gpx_files)
+    if not new_gpx_files:
         print("nothing changed in gpx_files")
         logToFile("nothing changed in gpx_files")
-
         return
-    
-    writeLastFileNames("/home/boris/projects/gpx-heatmap/heatmap/lastfiles.txt",gpx_files)
+
+    writeLastFileNames("/home/boris/projects/gpx-heatmap/heatmap/lastfiles.txt", gpx_files)
     logToFile("new files, starting creation")
 
     gpx_files_count = 0
+    lat_lon_data: list[tuple[float, float]] = []
 
-    lat_lon_data = []
+    year_filter = set(args.year) if args.year else None
+    previous_files = [f for f in gpx_files if f not in new_gpx_files]
 
-    for gpx_file in gpx_files:
+    for gpx_file in previous_files:
         print('Reading {}'.format(os.path.basename(gpx_file)))
-        if args.year:
-            with open(gpx_file, encoding='utf-8') as file:
-                for line in file:
-                    if '<time' in line:
-                        l = line.split('>')[1][:4]
+        points = extract_gpx_points(gpx_file, year_filter)
+        if points:
+            gpx_files_count += 1
+            lat_lon_data.extend(points)
 
-                        if not args.year or l in args.year:
-                            gpx_files_count += 1
-
-                            for line in file:
-                                if '<trkpt' in line:
-                                    l = line.split('"')
-
-                                    lat_lon_data.append([float(l[1]),
-                                                         float(l[3])])
-
-                        else:
-                            break
-        else:
-            with open(gpx_file, encoding='utf-8') as file:
-                for line in file:
-                    if '<trkpt' in line:
-                        l = line.split('"')
-                        lat_lon_data.append([float(l[1]),
-                                             float(l[3])])
+    if previous_files:
+        previous_bounds = bounds_from_points(lat_lon_data)
+        for gpx_file in sorted(new_gpx_files, key=os.path.getmtime):
+            print('Checking newest file {}'.format(os.path.basename(gpx_file)))
+            new_points = extract_gpx_points(gpx_file, year_filter)
+            if new_points and points_close_to_bounds(new_points, previous_bounds, BOUNDARY_MARGIN_DEG):
+                print('Including points from {}'.format(os.path.basename(gpx_file)))
+                gpx_files_count += 1
+                lat_lon_data.extend(new_points)
+            else:
+                print('Skipping points from {} because they are not near existing bounds'.format(os.path.basename(gpx_file)))
+                move_gpx_to_ausgelagert(gpx_file, '/home/boris/projects/gpx-heatmap/heatmap/')
+    else:
+        for gpx_file in new_gpx_files:
+            print('Reading {}'.format(os.path.basename(gpx_file)))
+            points = extract_gpx_points(gpx_file, year_filter)
+            if points:
+                gpx_files_count += 1
+                lat_lon_data.extend(points)
 
     lat_lon_data = np.array(lat_lon_data)
 
