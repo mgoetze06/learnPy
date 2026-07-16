@@ -13,13 +13,14 @@ from urllib.error import URLError
 from urllib.request import Request, urlopen
 from argparse import ArgumentParser, Namespace
 from datetime import datetime
+from xml.etree import ElementTree as ET
 import folium
 from folium.plugins import HeatMap
 
 import shutil
 
-BASE_DIR = "/home/boris/projects/gpx-heatmap/heatmap" #Path(__file__).resolve().parent
-HEATMAP_DIR = BASE_DIR / 'heatmap'
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+HEATMAP_DIR = PROJECT_ROOT / 'heatmap'
 HEATMAP_GPX_DIR = HEATMAP_DIR / 'gpx'
 HEATMAP_TILES_DIR = HEATMAP_DIR / 'tiles'
 HEATMAP_TEMPLATES_DIR = HEATMAP_DIR / 'templates'
@@ -87,29 +88,42 @@ def gaussian_filter(image: np.ndarray, sigma: float) -> np.ndarray:
 
 def extract_gpx_points(gpx_file: str, year_filter: set[str] | None = None) -> list[tuple[float, float]]:
     points: list[tuple[float, float]] = []
-    current_point: tuple[float, float] | None = None
 
-    with open(gpx_file, encoding='utf-8') as file:
-        for line in file:
-            if '<trkpt' in line:
-                parts = line.split('"')
-                if len(parts) >= 4:
-                    try:
-                        lat = float(parts[1])
-                        lon = float(parts[3])
-                        current_point = (lat, lon)
-                    except ValueError:
-                        current_point = None
-                else:
-                    current_point = None
-            elif current_point is not None and '<time' in line:
-                if year_filter is None:
-                    points.append(current_point)
-                else:
-                    year = line.split('>')[1][:4]
-                    if year in year_filter:
-                        points.append(current_point)
-                current_point = None
+    try:
+        tree = ET.parse(gpx_file)
+    except ET.ParseError:
+        return points
+
+    def local_name(tag: str) -> str:
+        return tag.split('}', 1)[1] if '}' in tag else tag
+
+    for element in tree.getroot().iter():
+        if local_name(element.tag) != 'trkpt':
+            continue
+
+        lat_text = element.get('lat')
+        lon_text = element.get('lon')
+        if lat_text is None or lon_text is None:
+            continue
+
+        try:
+            lat = float(lat_text)
+            lon = float(lon_text)
+        except ValueError:
+            continue
+
+        time_element = None
+        for child in element:
+            if local_name(child.tag) == 'time':
+                time_element = child
+                break
+
+        if time_element is None or not (time_element.text or '').strip():
+            continue
+
+        timestamp = (time_element.text or '').strip()
+        if year_filter is None or timestamp[:4] in year_filter:
+            points.append((lat, lon))
 
     return points
 
@@ -120,35 +134,56 @@ def bounds_from_points(points: list[tuple[float, float]]) -> tuple[float, float,
     return min(latitudes), max(latitudes), min(longitudes), max(longitudes)
 
 
-def points_close_to_bounds(points: list[tuple[float, float]],
-                           bounds: tuple[float, float, float, float],
-                           margin: float) -> bool:
+def point_close_to_bounds(point: tuple[float, float],
+                          bounds: tuple[float, float, float, float],
+                          margin: float) -> bool:
     lat_min, lat_max, lon_min, lon_max = bounds
 
-    # Expand the bounding rectangle by the given margin and
-    # consider any point inside that expanded rectangle as "close".
+    # Expand the bounding rectangle by the given margin and only consider
+    # the first trackpoint as the activity anchor for inclusion.
     lat_min_exp = lat_min - margin
     lat_max_exp = lat_max + margin
     lon_min_exp = lon_min - margin
     lon_max_exp = lon_max + margin
 
-    for lat, lon in points:
-        if lat_min_exp <= lat <= lat_max_exp and lon_min_exp <= lon <= lon_max_exp:
-            return True
+    lat, lon = point
+    return lat_min_exp <= lat <= lat_max_exp and lon_min_exp <= lon <= lon_max_exp
 
-    return False
+
+def start_point_close_to_bounds(points: list[tuple[float, float]],
+                                bounds: tuple[float, float, float, float],
+                                margin: float) -> bool:
+    if not points:
+        return False
+
+    return point_close_to_bounds(points[0], bounds, margin)
+
+
+def normalize_path(path: str) -> str:
+    try:
+        normalized = Path(path).resolve()
+    except Exception:
+        normalized = Path(path).absolute()
+
+    normalized_str = normalized.as_posix()
+    if os.name == 'nt':
+        normalized_str = normalized_str.casefold()
+    return normalized_str
 
 
 def get_new_gpx_files(filename_lastfile: str, gpx_files: list[str]) -> list[str]:
     if not os.path.exists(filename_lastfile):
         return gpx_files
 
-    last_files: list[str] = []
+    last_files: set[str] = set()
     with open(filename_lastfile, 'r', encoding='UTF-8') as file:
         for line in file:
-            last_files.append(line.rstrip())
+            line = line.strip()
+            if not line:
+                continue
+            last_files.add(normalize_path(line))
 
-    return [file for file in gpx_files if file not in last_files]
+    return [file for file in gpx_files if normalize_path(file) not in last_files]
 
 
 def move_gpx_to_ausgelagert(gpx_file: str, base_dir: str) -> None:
@@ -205,12 +240,12 @@ def main(args: Namespace) -> None:
         for gpx_file in sorted(new_gpx_files, key=os.path.getmtime):
             print('Checking newest file {}'.format(os.path.basename(gpx_file)))
             new_points = extract_gpx_points(gpx_file, year_filter)
-            if new_points and points_close_to_bounds(new_points, previous_bounds, BOUNDARY_MARGIN_DEG):
+            if new_points and start_point_close_to_bounds(new_points, previous_bounds, BOUNDARY_MARGIN_DEG):
                 print('Including points from {}'.format(os.path.basename(gpx_file)))
                 gpx_files_count += 1
                 lat_lon_data.extend(new_points)
             else:
-                print('Skipping points from {} because they are not near existing bounds'.format(os.path.basename(gpx_file)))
+                print('Skipping points from {} because the start point is not near existing bounds'.format(os.path.basename(gpx_file)))
                 move_gpx_to_ausgelagert(gpx_file, str(HEATMAP_DIR))
     else:
         for gpx_file in new_gpx_files:
@@ -481,26 +516,43 @@ def overlayFileTimeStamp(fileName):
         fontSize = 15
         topLeftWidthDivider = 10 # increase to make the textbox shorter in width
         topLeftHeightDivider = 45 # increase to make the textbox shorter in height
-        textPadding = 2 # 
+        textPadding = 2
         mydir = str(HEATMAP_DIR) + os.sep
         fileName2 = fileName.split('.')
         filePath = HEATMAP_DIR / fileName
         fileInfo = os.stat(filePath)
-        timeInfo = time.strftime("%d.%m.%Y", time.localtime(fileInfo.st_mtime))
+        timeInfo = time.strftime("%d.%m.%Y %H:%M", time.localtime(fileInfo.st_mtime))
         print(fileName + ": " + timeInfo)
-        
-        im = Image.open(filePath)
-        #myfont = ImageFont.truetype(fontFile, fontSize)
-        topLeftWidth = int(im.size[0] - (im.size[0] / topLeftWidthDivider))
-        topLeftHeight = int(im.size[1] - (im.size[1] / topLeftHeightDivider))
+
+        im = Image.open(filePath).convert("RGBA")
+        fontSize = max(12, min(18, int(im.size[1] * 0.015)))
+        try:
+            font = ImageFont.truetype("DejaVuSans.ttf", size=fontSize)
+        except OSError:
+            font = ImageFont.load_default()
+
         draw = ImageDraw.Draw(im)
-        draw.rectangle([topLeftWidth, topLeftHeight, im.size[0], im.size[1]], fill="grey")
-        #draw.text([topLeftWidth + textPadding, topLeftHeight + textPadding], timeInfo, fill="lime", font=myfont)
-        draw.text([topLeftWidth + textPadding, topLeftHeight + textPadding], timeInfo, fill="white")
+        try:
+            text_bbox = draw.textbbox((0, 0), timeInfo, font=font)
+            text_width = text_bbox[2] - text_bbox[0]
+            text_height = text_bbox[3] - text_bbox[1]
+        except AttributeError:
+            text_width, text_height = draw.textsize(timeInfo, font=font)
+
+        text_x = 10
+        text_y = 10
+        padding = 4
+        box = [text_x - padding,
+               text_y - padding,
+               text_x + text_width + padding,
+               text_y + text_height + padding]
+        draw.rectangle(box, fill=(0, 0, 0, 190))
+        draw.text((text_x, text_y), timeInfo, fill=(255, 255, 255, 255), font=font)
         del draw
-        
-        #write image
-        im.save(str(HEATMAP_DIR / (fileName2[0] + ".png")), 'PNG')
+
+        output_path = HEATMAP_DIR / (fileName2[0] + ".png")
+        im.save(output_path, 'PNG')
+        im.close()
 
 
     except Exception as e: 
@@ -549,36 +601,34 @@ def copyHeatmapToHA():
         logToFile("copyHeatmapToHA failed")
 
 def isNewFileAvailable(filename_lastfile, gpx_files):
-    last_files = []
     if not os.path.exists(filename_lastfile):
         print("file doesn't exists",filename_lastfile)
         logToFile("neue datei gefunden, starte heatmap 1")
         return True
-    
+
     print("opening file",filename_lastfile)
-    with open(filename_lastfile, "r",encoding='UTF-8') as file:
+    last_files = set()
+    with open(filename_lastfile, "r", encoding='UTF-8') as file:
         for line in file:
-            #print(line.rstrip())
-            last_files.append(line.rstrip())
+            line = line.strip()
+            if not line:
+                continue
+            last_files.add(normalize_path(line))
 
     for file in gpx_files:
-        if file not in last_files:
+        if normalize_path(file) not in last_files:
             print("newfile found:", file)
             logToFile("neue datei gefunden, starte heatmap 2")
-
             return True
-        #print("found file in lastfiles: ",file)
     logToFile("keine neue datei gefunden, keine neue heatmap")
-
     return False
 
 def writeLastFileNames(filename_lastfile, gpx_files):
-    print("writing all last files to file : ",filename_lastfile)
-    f = open(filename_lastfile, "w",encoding='UTF-8')
-    for file in gpx_files:
-        f.write(file + os.linesep)
-        #print(file)
-    f.close()
+    print("writing all last files to file : ", filename_lastfile)
+    normalized_files = sorted(normalize_path(file) for file in gpx_files)
+    with open(filename_lastfile, "w", encoding='UTF-8', newline='') as f:
+        for file in normalized_files:
+            f.write(file + "\n")
     logToFile("writing all last files to file : " + filename_lastfile)
 
 
