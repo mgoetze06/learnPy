@@ -1,55 +1,64 @@
-from random import random
+import json
+import os
+import re
+import shutil
+from datetime import datetime
+from pathlib import Path
 
 import requests
-from datetime import datetime
-import json
-import login
-from strava_secrets_request import getFullIntervalsHeaderWithAccessToken,getGPXHeader,get_intervals_url
 from paho.mqtt import client as mqtt_client
-import shutil
+
+import login
+from strava_secrets_request import (
+    getFullIntervalsHeaderWithAccessToken,
+    getGPXHeader,
+    get_intervals_url,
+)
+
+BASE_DIR = "/home/boris/projects/gpx-heatmap/heatmap" #Path(__file__).resolve().parent
+HEATMAP_DIR = BASE_DIR / "heatmap"
+HEATMAP_GPX_DIR = HEATMAP_DIR / "gpx"
+HEATMAP_LOG_FILE = HEATMAP_DIR / "log.txt"
+
 
 def fileExistsHeatmapFolder(filename):
     try:
-        destdir = "/home/boris/projects/gpx-heatmap/heatmap/gpx/"
-        #destdir = "/heatmap/gpx/"
-        fullPath = destdir + filename
-        return os.path.isfile(fullPath)
-    except:
+        return (HEATMAP_GPX_DIR / Path(filename).name).is_file()
+    except Exception:
         return False
-    
+
+
 def fileExistsLocalFolder(filename):
     try:
-        return os.path.isfile(filename)
-    except:
+        return Path(filename).is_file()
+    except Exception:
         return False
 
 
 def copyGPXToHeatmapFolder(gpxfile):
     try:
-        dest_dir = "/home/boris/projects/gpx-heatmap/heatmap/gpx"
-        #dest_dir = "/heatmap/gpx"
-        shutil.copy(gpxfile,dest_dir)
+        HEATMAP_GPX_DIR.mkdir(parents=True, exist_ok=True)
+        destination = HEATMAP_GPX_DIR / Path(gpxfile).name
+        shutil.copy2(gpxfile, destination)
         return True
-    except Exception as e: 
+    except Exception as e:
         logToFile(str(e))
         logToFile("copyGPXToHeatmapFolder failed")
-        pass
-    return False
+        return False
+
 
 def tryToRemoveFile(file):
     try:
-        os.remove(file)
-    except Exception as e: 
+        Path(file).unlink(missing_ok=True)
+    except Exception as e:
         logToFile(str(e))
         logToFile("removing gpx file failed.")
-        pass
+
 
 def logToFile(log):
-    f = open("log.txt", "a",encoding='UTF-8')
-    f.write(str(datetime.now()))
-    f.write(": ")
-    f.write(log + os.linesep)
-    f.close()
+    HEATMAP_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with open(HEATMAP_LOG_FILE, "a", encoding="utf-8") as file:
+        file.write(f"{datetime.now()}: {log}{os.linesep}")
 
 def get_intervals_activities(header):
     intervals_activities_url = get_intervals_url()
@@ -62,7 +71,7 @@ def get_intervals_activities(header):
         
         # Extract first activity's id and name
         if payload and len(payload) > 0:
-            activity = payload[0]
+            activity = payload
             
         #print(response.status_code)
     except ValueError:
@@ -85,7 +94,7 @@ def downloadFile(activity_id,output_path):
     print(f"Saved GPX to {output_path}")
 
 def connect_mqtt():
-    client_id = f'publish-{random.randint(0, 1000)}'
+    client_id = f'publish-972'
     def on_connect(client, userdata, flags, rc):
         if rc == 0:
             print("Connected to MQTT Broker!")
@@ -123,28 +132,32 @@ def publishMQTT(client,MQTT_MSG,topic):
 
 
 def downloadGPXFile():
-
     header = getFullIntervalsHeaderWithAccessToken()
 
-    activity = get_intervals_activities(header)
-    if not activity:
-        print("No activities found.")
+    activities = get_intervals_activities(header)
+    if not activities:
+        print("no activities")
         return
-    activity_name = activity.get("name", "activity")
-    start_date_local = activity.get("start_date_local", "unknown_date").replace('T', '_').replace(':', '')
-    output = f"{start_date_local}_{activity_name}.gpx"
-    activity_id = activity.get("id")
-    
-    if(fileExistsHeatmapFolder(output)):
-        return
-    if(fileExistsLocalFolder(output)):
-        copyGPXToHeatmapFolder(output)
-        return
-    downloadFile(activity_id, output)
-    if copyGPXToHeatmapFolder(output):
-        tryToRemoveFile(output)
 
-    return activity
+    for activity in activities:
+        activity_name = activity.get("name", "activity")
+        safe_activity_name = re.sub(r"[^A-Za-z0-9._-]+", "_", activity_name).strip("._")
+        start_date_local = activity.get("start_date_local", "unknown_date").replace("T", "_").replace(":", "")
+        output_filename = f"{start_date_local}_{safe_activity_name}.gpx"
+        output_path = BASE_DIR / output_filename
+        activity_id = activity.get("id")
+
+        if fileExistsHeatmapFolder(output_filename):
+            continue
+        if fileExistsLocalFolder(str(output_path)):
+            copyGPXToHeatmapFolder(str(output_path))
+            continue
+
+        downloadFile(activity_id, str(output_path))
+        if copyGPXToHeatmapFolder(str(output_path)):
+            tryToRemoveFile(str(output_path))
+
+    return activities[0]
 
 
 def run():
