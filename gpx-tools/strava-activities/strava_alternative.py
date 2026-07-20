@@ -5,6 +5,7 @@ import random
 import re
 import shutil
 from datetime import datetime
+from html import escape
 from pathlib import Path
 
 import requests
@@ -132,6 +133,191 @@ def logToFile(log):
     with open(HEATMAP_LOG_FILE, "a", encoding="utf-8") as file:
         file.write(f"{datetime.now()}: {log}{os.linesep}")
 
+
+def _activity_moving_time_seconds(activity):
+    for key in ("moving_time", "elapsed_time"):
+        value = activity.get(key)
+        if value is None:
+            continue
+        try:
+            return int(float(value))
+        except Exception:
+            continue
+    return 0
+
+
+def _is_activity_store_fresh(max_age_minutes=30):
+    if not HEATMAP_ACTIVITY_PKL_FILE.is_file():
+        return False
+
+    try:
+        age_seconds = datetime.now().timestamp() - HEATMAP_ACTIVITY_PKL_FILE.stat().st_mtime
+        return age_seconds <= max_age_minutes * 60
+    except Exception:
+        return False
+
+
+def _select_latest_activity(activities):
+    if not isinstance(activities, list):
+        return None
+
+    valid_activities = [item for item in activities if isinstance(item, dict)]
+    if not valid_activities:
+        return None
+
+    def sort_key(activity):
+        parsed_dt = _parse_activity_datetime(activity)
+        if parsed_dt is not None:
+            return parsed_dt
+
+        raw_value = activity.get("start_date_local") or activity.get("start_date") or ""
+        try:
+            return datetime.fromisoformat(str(raw_value).replace("Z", "+00:00"))
+        except Exception:
+            return datetime.min
+
+    return max(valid_activities, key=sort_key)
+
+
+def _format_relative_time(past_time, now=None):
+    now = now or datetime.now()
+    delta = now - past_time
+    total_seconds = max(int(delta.total_seconds()), 0)
+
+    if total_seconds < 60:
+        return "gerade eben"
+
+    minutes = total_seconds // 60
+    if minutes < 60:
+        return f"vor {minutes} Minute{'n' if minutes != 1 else ''}"
+
+    hours = minutes // 60
+    if hours < 24:
+        return f"vor {hours} Stunde{'n' if hours != 1 else ''}"
+
+    days = hours // 24
+    return f"vor {days} Tag{'en' if days != 1 else ''}"
+
+
+def _format_duration(minutes):
+    hours, remainder = divmod(int(minutes), 60)
+    if hours and remainder:
+        return f"{hours}h {remainder}m"
+    if hours:
+        return f"{hours}h"
+    return f"{remainder}m"
+
+
+def get_last_ride_html(activities, now=None):
+    now = now or datetime.now()
+    activity = _select_latest_activity(activities)
+
+    if not activity:
+        return f"""<!DOCTYPE html>
+<html lang=\"de\">
+<head>
+    <meta charset=\"UTF-8\">
+    <title>Letzte Fahrt</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f3f4f6; color: #111827; }}
+        .card {{ background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 20px; max-width: 460px; }}
+        .title {{ font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }}
+        .meta {{ color: #6b7280; font-size: 0.95rem; margin-bottom: 12px; }}
+        .message {{ color: #374151; font-size: 0.95rem; line-height: 1.5; }}
+    </style>
+</head>
+<body>
+    <div class=\"card\">
+        <div class=\"title\">Letzte Fahrt</div>
+        <div class=\"meta\">{now.strftime('%d.%m.%Y %H:%M:%S')}</div>
+        <div class=\"message\">Noch keine Daten verfügbar.</div>
+    </div>
+</body>
+</html>"""
+
+    name = escape(str(activity.get("name") or "Unbekannte Fahrt"))
+    start_dt = _parse_activity_datetime(activity)
+    start_text = start_dt.strftime("%d.%m.%Y %H:%M") if start_dt else "Unbekannt"
+    distance_km = round(_activity_distance_meters(activity) / 1000, 2)
+    speed_kmh = round(_activity_average_speed(activity) * 3.6, 2)
+    duration_minutes = round(_activity_moving_time_seconds(activity) / 60)
+    duration_text = _format_duration(duration_minutes)
+    relative_update = _format_relative_time(now, now)
+
+    html = f"""<!DOCTYPE html>
+<html lang=\"de\">
+<head>
+    <meta charset=\"UTF-8\">
+    <meta http-equiv=\"refresh\" content=\"15\">
+    <title>Letzte Fahrt</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 0; min-height: 100vh; padding: 20px; background: #0f172a; color: #e5e7eb; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }}
+        .card {{ background: #111827; border: 1px solid #374151; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.35); padding: 20px; width: min(100%, 720px); }}
+        .title {{ font-size: 1.1rem; font-weight: 600; margin-bottom: 6px; color: #f9fafb; }}
+        .meta {{ color: #9ca3af; font-size: 0.95rem; margin-bottom: 16px; }}
+        .stats {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }}
+        .stat {{ background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 10px; text-align: center; }}
+        .label {{ font-size: 0.75rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; }}
+        .value {{ font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px; }}
+        .footer {{ margin-top: 14px; color: #9ca3af; font-size: 0.85rem; }}
+    </style>
+</head>
+<body>
+    <div class=\"card\">
+        <div class=\"title\">{name}</div>
+        <div class=\"meta\">{start_text}</div>
+        <div class=\"stats\">
+            <div class=\"stat\">
+                <div class=\"label\">Ø Geschwindigkeit</div>
+                <div class=\"value\">{speed_kmh} km/h</div>
+            </div>
+            <div class=\"stat\">
+                <div class=\"label\">Distanz</div>
+                <div class=\"value\">{distance_km} km</div>
+            </div>
+            <div class=\"stat\">
+                <div class=\"label\">Dauer</div>
+                <div class=\"value\">{duration_text}</div>
+            </div>
+        </div>
+        <div class=\"footer\">Letzte Aktualisierung: {now.strftime('%d.%m.%Y %H:%M:%S')} ({relative_update})</div>
+    </div>
+</body>
+</html>"""
+    return html
+
+
+def copyStravaAnalyseToHA(filename):
+    try:
+        destination = Path("/mnt/homeassistant/www") / filename
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(HEATMAP_DIR / filename, destination)
+    except Exception as e:
+        logToFile(str(e))
+        logToFile("copyStravaAnalyseToHA failed")
+
+
+def create_last_ride_html_file(filename, activities, now=None):
+    HEATMAP_DIR.mkdir(parents=True, exist_ok=True)
+    output_path = HEATMAP_DIR / filename
+    html = get_last_ride_html(activities, now=now)
+
+    try:
+        if output_path.exists():
+            output_path.unlink()
+        with open(output_path, "w", encoding="utf-8") as file:
+            file.write(html)
+        copyStravaAnalyseToHA(filename)
+    except Exception as e:
+        logToFile(str(e))
+
+    return output_path
+
+
+def createStravaAnalyseHtml(filename, activities, now=None):
+    return create_last_ride_html_file(filename, activities, now=now)
+
+
 def get_intervals_activities(header):
     intervals_activities_url = get_intervals_url()
     response = requests.get(intervals_activities_url, headers=header)
@@ -168,7 +354,7 @@ def downloadFile(activity_id,output_path):
 
 def connect_mqtt():
     client_id = f'publish-{random.randint(100, 999)}'
-    def on_connect(client, userdata, flags, rc):
+    def on_connect(client, userdata, flags, rc, properties=None):
         if rc == 0:
             print("Connected to MQTT Broker!")
         else:
@@ -343,14 +529,22 @@ def downloadGPXFile():
         if copyGPXToHeatmapFolder(str(output_path)):
             tryToRemoveFile(str(output_path))
 
-    return activities[0]
+    return activities
 
 
 def run():
-    activity = downloadGPXFile()
     client = connect_mqtt()
     client.loop_start()
     publish_pickle_summary(client)
+
+    if _is_activity_store_fresh():
+        activities = load_pickled_activities()
+    else:
+        activities = downloadGPXFile()
+        if not activities:
+            activities = load_pickled_activities()
+
+    create_last_ride_html_file("strava_analyse.html", activities)
     client.loop_stop()
 
 
