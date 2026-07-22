@@ -242,7 +242,6 @@ def get_last_ride_html(activities, now=None):
     speed_kmh = round(_activity_average_speed(activity) * 3.6, 2)
     duration_minutes = round(_activity_moving_time_seconds(activity) / 60)
     duration_text = _format_duration(duration_minutes)
-    relative_update = _format_relative_time(now, now)
 
     html = f"""<!DOCTYPE html>
 <html lang=\"de\">
@@ -280,8 +279,37 @@ def get_last_ride_html(activities, now=None):
                 <div class=\"value\">{duration_text}</div>
             </div>
         </div>
-        <div class=\"footer\">Letzte Aktualisierung: {now.strftime('%d.%m.%Y %H:%M:%S')} ({relative_update})</div>
+        <div class=\"footer\">Letzte Aktualisierung: <span id=\"last-update\" data-ts=\"{now.strftime('%Y-%m-%dT%H:%M:%S')}\">{now.strftime('%d.%m.%Y %H:%M:%S')}</span> (<span id=\"last-update-relative\">lade...</span>)</div>
     </div>
+    <script>
+        (function(){{
+            function formatRelative(pastIso) {{
+                var now = new Date();
+                var past = new Date(pastIso);
+                var delta = Math.floor((now - past) / 1000);
+                if (delta < 60) return "gerade eben";
+                var minutes = Math.floor(delta / 60);
+                if (minutes < 60) return "vor " + minutes + " Minute" + (minutes !== 1 ? "n" : "");
+                var hours = Math.floor(minutes / 60);
+                if (hours < 24) return "vor " + hours + " Stunde" + (hours !== 1 ? "n" : "");
+                var days = Math.floor(hours / 24);
+                return "vor " + days + " Tag" + (days !== 1 ? "en" : "");
+            }}
+
+            function updateRelative() {{
+                var tsEl = document.getElementById('last-update');
+                var relEl = document.getElementById('last-update-relative');
+                if (!tsEl || !relEl) return;
+                var iso = tsEl.getAttribute('data-ts');
+                if (!iso) return;
+                relEl.textContent = formatRelative(iso);
+            }}
+
+            // Update immediately and then every 15 seconds
+            updateRelative();
+            setInterval(updateRelative, 15000);
+        }})();
+    </script>
 </body>
 </html>"""
     return html
