@@ -3,6 +3,7 @@ import os
 import pickle
 import random
 import re
+import time
 import shutil
 from datetime import datetime
 from html import escape
@@ -16,6 +17,7 @@ from strava_secrets_request import (
     getFullIntervalsHeaderWithAccessToken,
     getGPXHeader,
     get_intervals_url,
+    getSyncUrl,
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -152,7 +154,7 @@ def _is_activity_store_fresh(max_age_minutes=30):
 
     try:
         age_seconds = datetime.now().timestamp() - HEATMAP_ACTIVITY_PKL_FILE.stat().st_mtime
-        return age_seconds <= max_age_minutes * 60
+        return age_seconds <= max_age_minutes * 1
     except Exception:
         return False
 
@@ -353,7 +355,7 @@ def get_intervals_activities(header):
     activity = None
     try:
         payload = response.json()
-        print(json.dumps(payload, indent=2, ensure_ascii=False))
+        #print(json.dumps(payload, indent=2, ensure_ascii=False))
         
         # Extract first activity's id and name
         if payload and len(payload) > 0:
@@ -524,10 +526,25 @@ def publish_pickle_summary(client):
     MQTT_MSG = json.dumps(summary)
     publishMQTT(client, MQTT_MSG, login.topic)
 
+def sync_activities(sleeptime = 5, header=None):
+    sync_url, auth = getSyncUrl()
+    try:
+        response = requests.get(sync_url, headers=header)
+        response.raise_for_status()
+        print("Sync successful.")
+        logToFile("Sync successful.")
+        time.sleep(sleeptime)  # Optional: Wait for a short period to ensure the sync is processed
+    except requests.exceptions.RequestException as e:
+        print(f"Sync failed: {e}")
+        logToFile(f"Sync failed: {e}")
 
 def downloadGPXFile():
     header = getFullIntervalsHeaderWithAccessToken()
 
+    sync_activities(5, header)
+
+
+    print("Fetching activities after sync...")
     activities = get_intervals_activities(header)
     if not activities:
         print("no activities")
@@ -541,7 +558,7 @@ def downloadGPXFile():
         output_filename = f"{start_date_local}_{safe_activity_name}.gpx"
         output_path = HEATMAP_GPX_DIR / output_filename
         activity_id = activity.get("id")
-
+        print(f"Processing activity {activity_id}: {activity_name} -> {output_path}")
         if add_activity_to_pickle(activity):
             print(f"Saved activity {activity_id} to pickle")
         else:
