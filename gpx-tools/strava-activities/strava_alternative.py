@@ -580,7 +580,6 @@ def downloadGPXFile():
 def run():
     client = connect_mqtt()
     client.loop_start()
-    publish_pickle_summary(client)
 
     if _is_activity_store_fresh():
         activities = load_pickled_activities()
@@ -588,6 +587,9 @@ def run():
         activities = downloadGPXFile()
         if not activities:
             activities = load_pickled_activities()
+
+
+    publish_pickle_summary(client)
 
     create_last_ride_html_file("strava_analyse.html", activities)
     client.loop_stop()
