@@ -5,7 +5,7 @@ import random
 import re
 import time
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta
 from html import escape
 from pathlib import Path
 
@@ -210,9 +210,101 @@ def _format_duration(minutes):
     return f"{remainder}m"
 
 
+def _get_activity_elevation_gain(activity):
+    if not isinstance(activity, dict):
+        return 0
+
+    for key in ("total_elevation_gain", "elevation_gain", "climbing", "total_ascent"):
+        value = activity.get(key)
+        if value is None:
+            continue
+        try:
+            return int(float(value))
+        except Exception:
+            continue
+
+    return 0
+
+
+def _get_activity_period_summary(activities, now=None):
+    now = now or datetime.now()
+    start_of_week = now - timedelta(days=now.weekday())
+    start_of_week = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59)
+
+    summary = {
+        "total": {"count": 0, "elevation_gain": 0},
+        "this_week": {"count": 0, "elevation_gain": 0},
+        "this_month": {"count": 0, "elevation_gain": 0},
+        "this_year": {"count": 0, "elevation_gain": 0},
+    }
+
+    if not isinstance(activities, list):
+        return summary
+
+    for activity in activities:
+        if not isinstance(activity, dict):
+            continue
+
+        activity_dt = _parse_activity_datetime(activity)
+        elevation_gain = _get_activity_elevation_gain(activity)
+
+        summary["total"]["count"] += 1
+        summary["total"]["elevation_gain"] += elevation_gain
+
+        if activity_dt is None:
+            continue
+
+        if activity_dt.year == now.year:
+            summary["this_year"]["count"] += 1
+            summary["this_year"]["elevation_gain"] += elevation_gain
+
+        if activity_dt.year == now.year and activity_dt.month == now.month:
+            summary["this_month"]["count"] += 1
+            summary["this_month"]["elevation_gain"] += elevation_gain
+
+        if start_of_week <= activity_dt <= end_of_week:
+            summary["this_week"]["count"] += 1
+            summary["this_week"]["elevation_gain"] += elevation_gain
+
+    return summary
+
+
+def _get_activity_period_counts(activities, now=None):
+    summary = _get_activity_period_summary(activities, now=now)
+    return {key: values["count"] for key, values in summary.items()}
+
+
+def _get_total_elevation_gain(activities):
+    summary = _get_activity_period_summary(activities)
+    return summary["total"]["elevation_gain"]
+
+
 def get_last_ride_html(activities, now=None):
     now = now or datetime.now()
     activity = _select_latest_activity(activities)
+    period_summary = _get_activity_period_summary(activities, now=now)
+    data_block = f"""<div class=\"card\" style=\"margin-top: 16px; width: min(100%, 720px); background: #111827; border: 1px solid #374151; box-shadow: 0 2px 8px rgba(0,0,0,0.35);\">
+    <div class=\"title\">Daten</div>
+    <div class=\"meta\">Höhenmeter nach Zeitraum</div>
+    <div style=\"display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;\">
+        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 10px; text-align: center;\">
+            <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Diese Woche</div>
+            <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_week']['elevation_gain']} m</div>
+            <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_week']['count']} Fahrten</div>
+        </div>
+        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 10px; text-align: center;\">
+            <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Dieser Monat</div>
+            <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_month']['elevation_gain']} m</div>
+            <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_month']['count']} Fahrten</div>
+        </div>
+        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 10px; text-align: center;\">
+            <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Dieses Jahr</div>
+            <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_year']['elevation_gain']} m</div>
+            <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_year']['count']} Fahrten</div>
+        </div>
+    </div>
+</div>"""
 
     if not activity:
         return f"""<!DOCTYPE html>
@@ -234,6 +326,7 @@ def get_last_ride_html(activities, now=None):
         <div class=\"meta\">{now.strftime('%d.%m.%Y %H:%M:%S')}</div>
         <div class=\"message\">Noch keine Daten verfügbar.</div>
     </div>
+    {data_block}
 </body>
 </html>"""
 
@@ -252,7 +345,7 @@ def get_last_ride_html(activities, now=None):
     <meta http-equiv=\"refresh\" content=\"15\">
     <title>Letzte Fahrt</title>
     <style>
-        body {{ font-family: Arial, sans-serif; margin: 0; min-height: 100vh; padding: 20px; background: #0f172a; color: #e5e7eb; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }}
+        body {{ font-family: Arial, sans-serif; margin: 0; min-height: 100vh; padding: 20px; background: #0f172a; color: #e5e7eb; display: flex; flex-direction: column; gap: 16px; align-items: center; justify-content: flex-start; box-sizing: border-box; }}
         .card {{ background: #111827; border: 1px solid #374151; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.35); padding: 20px; width: min(100%, 720px); }}
         .title {{ font-size: 1.1rem; font-weight: 600; margin-bottom: 6px; color: #f9fafb; }}
         .meta {{ color: #9ca3af; font-size: 0.95rem; margin-bottom: 16px; }}
@@ -260,6 +353,13 @@ def get_last_ride_html(activities, now=None):
         .stat {{ background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 10px; text-align: center; }}
         .label {{ font-size: 0.75rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; }}
         .value {{ font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px; }}
+        .summary {{ margin-top: 14px; background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 12px; }}
+        .summary-title {{ font-size: 0.9rem; font-weight: 600; color: #f9fafb; margin-bottom: 8px; }}
+        .summary-grid {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }}
+        .summary-item {{ background: #111827; border: 1px solid #374151; border-radius: 8px; padding: 8px; text-align: center; }}
+        .summary-item .label {{ font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; }}
+        .summary-item .value {{ font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px; }}
+        .summary-note {{ margin-top: 10px; color: #9ca3af; font-size: 0.8rem; line-height: 1.4; }}
         .footer {{ margin-top: 14px; color: #9ca3af; font-size: 0.85rem; }}
     </style>
 </head>
@@ -283,6 +383,7 @@ def get_last_ride_html(activities, now=None):
         </div>
         <div class=\"footer\">Letzte Aktualisierung: <span id=\"last-update\" data-ts=\"{now.strftime('%Y-%m-%dT%H:%M:%S')}\">{now.strftime('%d.%m.%Y %H:%M:%S')}</span> (<span id=\"last-update-relative\">lade...</span>)</div>
     </div>
+    {data_block}
     <script>
         (function(){{
             function formatRelative(pastIso) {{
@@ -510,6 +611,9 @@ def get_pickle_summary():
     average_distance_month = round((sum(month_distances) / len(month_distances)) / 1000, 2) if month_distances else 0.0
     max_average_speed = round(max(all_speeds) * 3.6, 2) if all_speeds else 0.0
 
+    period_counts = _get_activity_period_counts(activities, now=now)
+    total_elevation_gain = _get_total_elevation_gain(activities)
+
     return {
         'timestamp': now.strftime('%Y-%m-%d, %H:%M:%S'),
         'distance_all': round(9135.2 + round(distance_all / 1000, 2), 2),
@@ -518,6 +622,8 @@ def get_pickle_summary():
         'average_speed_month': average_speed_month,
         'average_distance_month': average_distance_month,
         'max_average_speed': max_average_speed,
+        'activity_counts': period_counts,
+        'elevation_gain_total': total_elevation_gain,
     }
 
 
