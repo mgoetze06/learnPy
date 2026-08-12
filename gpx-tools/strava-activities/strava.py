@@ -596,17 +596,17 @@ def connect_mqtt():
     return client
 
 
-def publish(client):
+def publishStravaData(client):
     timestamp,distance_all,distance_month,distance_year,average_speed_month,average_distance_month,max_average_speed,rides = getStravaData()
     MQTT_MSG=json.dumps({"timestamp": timestamp,"distance_all": distance_all,"distance_month":  distance_month,"distance_year": distance_year,"average_speed_month": average_speed_month,"average_distance_month": average_distance_month,"max_average_speed": max_average_speed});
-    publichMQTT(client,MQTT_MSG,login.topic)
+    publishMQTT(client,MQTT_MSG,login.topic)
     return rides
 
-def publishLastRideMessage(client,topic, message):
+def publishMessage(client,topic, message):
     MQTT_MSG=json.dumps({"message": message});
-    publichMQTT(client,MQTT_MSG,topic)
+    publishMQTT(client,MQTT_MSG,topic)
 
-def publichMQTT(client,MQTT_MSG,topic):
+def publishMQTT(client,MQTT_MSG,topic):
     result = client.publish(topic, MQTT_MSG)
     # result: [0, 1]
     status = result[0]
@@ -630,6 +630,54 @@ def downloadLastActivities(rides, downloadFiles):
             print("error downloading ride with id: ",id)
             pass
     return 
+
+def get_strava_flyby_matches(activity_id):
+    """
+    Fetches flyby matches for a specific Strava activity ID.
+    """
+    url = f"https://nene.strava.com/flyby/matches/{activity_id}"
+    
+    headers = {
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'Accept-Language': 'de,en-US;q=0.9,en;q=0.8',
+        'Referer': 'https://labs.strava.com/',
+        'Origin': 'https://labs.strava.com',
+    }
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        return response.json()
+    
+    except requests.exceptions.HTTPError as http_err:
+        print(f"HTTP error occurred: {http_err}")
+    except Exception as err:
+        print(f"An error occurred: {err}")
+
+def getFlyByMessage(rides):
+    try:
+        id = rides.iloc[0]["id"]
+        data = get_strava_flyby_matches(str(id))
+
+        if not data:
+            return None
+        
+        ownActivity = data['activity']
+        #print(ownActivity)
+        ownID = ownActivity['athleteId']
+        #print(ownID)
+        athletes = data['athletes']
+        #print(athletes)
+        count = len([entry for entry in athletes if str(entry) != str(ownID)])
+        first_names = [user['firstName'].encode("ascii", "ignore").decode() for user in athletes.values() if str(user['id']) != str(ownID)]
+        description = ", ".join(first_names)
+        description = limitTextSize(description,255)
+        #print("Matches: ", count)
+        MQTT_MSG=json.dumps({"count": count,"description": description})
+        return MQTT_MSG
+    except:
+        return None
+    
 
 def createStravaAnalyseHtml(filename, rides):
     fullFilename = getFullStravaAnalyseFilename(filename)
@@ -666,15 +714,26 @@ def createStravaAnalyseHtml(filename, rides):
 
     return lastRideMessage, lastRideMessageDistance
 
+def limitTextSize(text,limit=255):
+    if len(text) > limit:
+        final_output = text[:limit-3] + "..."
+    else:
+        final_output = text
+
+    return final_output
 
 def run():
     #while True:
     client = connect_mqtt()
     client.loop_start()
-    rides = publish(client)
+    rides = publishStravaData(client)
     lastRideMessageSpeed,lastRideMessageDistance = createStravaAnalyseHtml('strava_analyse.html',rides)
-    publishLastRideMessage(client,login.topicMessage,lastRideMessageSpeed)
-    publishLastRideMessage(client,login.topicMessageDistance,lastRideMessageDistance)
+    publishMessage(client,login.topicMessage,lastRideMessageSpeed)
+    publishMessage(client,login.topicMessageDistance,lastRideMessageDistance)
+
+    flybyMessage = getFlyByMessage(rides)
+    publishMQTT(client,flybyMessage,login.topicMessageFlyby)
+
 
     client.loop_stop()
 
