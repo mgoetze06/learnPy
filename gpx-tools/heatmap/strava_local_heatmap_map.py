@@ -379,12 +379,13 @@ def generate_heatmap_from_points(lat_lon_data: np.ndarray,
             supertile[i*OSM_TILE_SIZE:(i+1)*OSM_TILE_SIZE,
                       j*OSM_TILE_SIZE:(j+1)*OSM_TILE_SIZE, :] = tile[:, :, :3]
 
-    if not args.orange:
+    natural_mode = bool(getattr(args, 'natural', False))
+    single_track = bool(getattr(args, 'single_track', False))
+    if not (args.orange or natural_mode or single_track):
         supertile = np.sum(supertile*[0.2126, 0.7152, 0.0722], axis=2)
         supertile = 1.0-supertile
         supertile = np.dstack((supertile, supertile, supertile))
-
-    sigma_pixel = args.sigma if not args.orange else 1
+    sigma_pixel = 0 if single_track else (args.sigma if not args.orange else 1)
     data = np.zeros(supertile.shape[:2])
 
     xy_data = deg2xy(lat_lon_data[:, 0], lat_lon_data[:, 1], zoom)
@@ -393,7 +394,13 @@ def generate_heatmap_from_points(lat_lon_data: np.ndarray,
     ij_data = np.flip(xy_data.astype(int), axis=1)
 
     for i, j in ij_data:
-        data[i-sigma_pixel:i+sigma_pixel, j-sigma_pixel:j+sigma_pixel] += 1.0
+        if single_track:
+            for row_offset in (-1, 0, 1):
+                for col_offset in (-1, 0, 1):
+                    data[max(0, min(data.shape[0]-1, i + row_offset)),
+                         max(0, min(data.shape[1]-1, j + col_offset))] += 1.0
+        else:
+            data[i-sigma_pixel:i+sigma_pixel, j-sigma_pixel:j+sigma_pixel] += 1.0
 
     if not args.orange:
         res_pixel = 156543.03*np.cos(np.radians(np.mean(lat_lon_data[:, 0])))/(2.0**zoom)
@@ -403,7 +410,12 @@ def generate_heatmap_from_points(lat_lon_data: np.ndarray,
 
     data[data > m] = m
 
-    if not args.orange:
+    if single_track:
+        mask = data > 0.0
+        line_color = np.array([255, 128, 0], dtype=float)/255
+        for c in range(3):
+            supertile[:, :, c] = np.where(mask, np.clip((1.0 - data) * supertile[:, :, c] + data * line_color[c], 0.0, 1.0), supertile[:, :, c])
+    elif not args.orange:
         data_hist, _ = np.histogram(data, bins=int(m+1))
         data_hist = np.cumsum(data_hist)/data.size
 
@@ -414,13 +426,22 @@ def generate_heatmap_from_points(lat_lon_data: np.ndarray,
         data = gaussian_filter(data, float(sigma_pixel))
         data = (data-data.min())/(data.max()-data.min())
 
-    if not args.orange:
         cmap = plt.get_cmap(PLT_COLORMAP)
         data_color = cmap(data)
         data_color[data_color == cmap(0.0)] = 0.0
 
-        for c in range(3):
-            supertile[:, :, c] = (1.0-data_color[:, :, c])*supertile[:, :, c]+data_color[:, :, c]
+        if not natural_mode:
+            for c in range(3):
+                supertile[:, :, c] = (1.0 - data_color[:, :, c]) * supertile[:, :, c] + data_color[:, :, c]
+        else:
+            warm_color = np.array([1.0, 0.72, 0.38], dtype=float)
+            for c in range(3):
+                heat_strength = data_color[:, :, c] * 0.85
+                supertile[:, :, c] = np.clip(
+                    supertile[:, :, c] * (1.0 - heat_strength) + warm_color[c] * heat_strength,
+                    0.0,
+                    1.0,
+                )
     else:
         color = np.array([255, 82, 0], dtype=float)/255
 
@@ -755,6 +776,8 @@ if __name__ == '__main__':
                         help='heatmap Gaussian kernel sigma in pixel (default: 1)')
     parser.add_argument('--orange', action='store_true',
                         help='not a heatmap...')
+    parser.add_argument('--natural', action='store_true',
+                        help='use the natural OSM-style colors instead of the default monochrome background')
     parser.add_argument('--csv', action='store_true',
                         help='also save the heatmap data to a CSV file')
     parser.add_argument('--html', action='store_true',
