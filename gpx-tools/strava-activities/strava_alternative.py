@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import pickle
@@ -96,6 +97,90 @@ def add_activity_to_pickle(activity: dict) -> bool:
         return False
 
 
+def _sanitize_activity_name(value):
+    text = str(value or "").strip()
+    text = re.sub(r"[^A-Za-z0-9._-]+", "_", text)
+    return text.strip("._")
+
+
+def _activity_key(activity):
+    if not isinstance(activity, dict):
+        return ""
+
+    name = _sanitize_activity_name(activity.get("name") or activity.get("activity_name") or "")
+    raw_value = activity.get("start_date_local") or activity.get("start_date") or ""
+    key_timestamp = ""
+
+    if raw_value:
+        try:
+            parsed = datetime.fromisoformat(str(raw_value).replace("Z", "+00:00"))
+            key_timestamp = parsed.strftime("%Y-%m-%d-%H-%M-%S")
+        except ValueError:
+            key_timestamp = str(raw_value).replace("T", "-").replace(":", "-").replace("Z", "")
+            key_timestamp = key_timestamp.split("+")[0].replace("_", "-")
+
+    if not key_timestamp:
+        start_dt = _parse_activity_datetime(activity)
+        if start_dt is not None:
+            key_timestamp = start_dt.strftime("%Y-%m-%d-%H-%M-%S")
+
+    if key_timestamp and name:
+        return f"{key_timestamp}_{name}"
+    return key_timestamp or name
+
+
+def _gpx_file_key(filename):
+    stem = Path(filename).stem
+    match = re.search(r"\d{4}-\d{2}-\d{2}(?:[-_]\d{2}){0,3}", stem)
+    if not match:
+        return ""
+
+    ts = match.group(0).replace("_", "-")
+    name = _sanitize_activity_name(stem[match.end():].lstrip("_"))
+    if name:
+        return f"{ts}_{name}"
+    return ts
+
+
+def _activity_from_gpx_filename(filename):
+    stem = Path(filename).stem
+    parsed = re.match(r"^(?P<ts>\d{4}-\d{2}-\d{2}(?:[-_]\d{2}){0,3})(?:[_-]+(?P<name>.*))?$", stem)
+
+    timestamp = ""
+    name = "Unbekannte Fahrt"
+
+    if parsed:
+        timestamp = (parsed.group("ts") or "").replace("_", "-")
+        raw_name = parsed.group("name") or ""
+        name = _sanitize_activity_name(raw_name) or "Unbekannte Fahrt"
+
+    if not timestamp:
+        timestamp = "1970-01-01-00-00-00"
+
+    try:
+        start_date_local = datetime.strptime(timestamp, "%Y-%m-%d-%H-%M-%S").isoformat(timespec="seconds")
+    except ValueError:
+        try:
+            start_date_local = datetime.strptime(timestamp, "%Y-%m-%d-%H-%M").isoformat(timespec="seconds")
+        except ValueError:
+            try:
+                start_date_local = datetime.strptime(timestamp, "%Y-%m-%d").isoformat(timespec="seconds")
+            except ValueError:
+                start_date_local = "1970-01-01T00:00:00"
+
+    return {
+        "id": f"gpx::{stem}",
+        "name": name,
+        "start_date_local": start_date_local,
+        "distance": 0.0,
+        "average_speed": 0.0,
+        "moving_time": 0,
+        "elapsed_time": 0,
+        "total_elevation_gain": 0,
+        "source": "gpx_scan",
+    }
+
+
 def fileExistsHeatmapFolder(filename):
     try:
         return (HEATMAP_GPX_DIR / Path(filename).name).is_file()
@@ -108,6 +193,191 @@ def fileExistsLocalFolder(filename):
         return Path(filename).is_file()
     except Exception:
         return False
+
+
+def scan_heatmap_gpx_dir():
+    try:
+        HEATMAP_GPX_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+
+    if not HEATMAP_GPX_DIR.is_dir():
+        return []
+
+    known_keys = {
+        _activity_key(item)
+        for item in load_pickled_activities()
+        if isinstance(item, dict) and _activity_key(item)
+    }
+
+    missing_files = []
+    for gpx_path in sorted(HEATMAP_GPX_DIR.glob("*.gpx")):
+        if not gpx_path.is_file():
+            continue
+        key = _gpx_file_key(gpx_path.name)
+        if key and key not in known_keys:
+            missing_files.append(gpx_path.name)
+            activity = _activity_from_gpx_filename(gpx_path.name)
+            if add_activity_to_pickle(activity):
+                logToFile(f"Added missing GPX activity to pickle: {gpx_path.name}")
+
+    if missing_files:
+        logToFile(
+            "Detected GPX files missing from pickle: " + ", ".join(sorted(missing_files))
+        )
+    return missing_files
+
+
+def _remove_matching_gpx_files(activity):
+    if not isinstance(activity, dict):
+        return
+
+    activity_key = _activity_key(activity)
+    if not activity_key:
+        return
+
+    try:
+        HEATMAP_GPX_DIR.mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+
+    if not HEATMAP_GPX_DIR.is_dir():
+        return
+
+    for gpx_path in HEATMAP_GPX_DIR.glob("*.gpx"):
+        if _gpx_file_key(gpx_path.name) == activity_key:
+            try:
+                gpx_path.unlink(missing_ok=True)
+            except Exception as exc:
+                logToFile(f"Failed to remove GPX file {gpx_path}: {exc}")
+
+
+def delete_activity_by_id(activity_id, remove_gpx=True):
+    if activity_id in (None, ""):
+        return False
+
+    store = _load_activity_store()
+    target_id = str(activity_id)
+    removed_activity = None
+
+    if isinstance(store, list):
+        filtered = []
+        for item in store:
+            if isinstance(item, dict) and str(item.get("id")) == target_id:
+                removed_activity = item
+                continue
+            filtered.append(item)
+
+        if removed_activity is None:
+            return False
+
+        _save_activity_store(filtered)
+        if remove_gpx:
+            _remove_matching_gpx_files(removed_activity)
+        return True
+
+    try:
+        import pandas as pd
+        if hasattr(store, "columns") and "id" in store.columns:
+            matches = store["id"].astype(str) == target_id
+            if not matches.any():
+                return False
+            removed_activity = store.loc[matches].iloc[0].to_dict()
+            cleaned_store = store.loc[~matches].copy()
+            _save_activity_store(cleaned_store)
+            if remove_gpx:
+                _remove_matching_gpx_files(removed_activity)
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+def update_activity_distance_by_id(activity_id, distance):
+    if activity_id in (None, ""):
+        return False
+
+    try:
+        distance_value = float(distance)
+    except (TypeError, ValueError):
+        return False
+
+    store = _load_activity_store()
+    target_id = str(activity_id)
+    updated = False
+
+    if isinstance(store, list):
+        for item in store:
+            if isinstance(item, dict) and str(item.get("id")) == target_id:
+                item["distance"] = distance_value
+                item["distance_raw"] = distance_value
+                if "distance" not in item:
+                    item["distance"] = distance_value
+                updated = True
+        if updated:
+            _save_activity_store(store)
+            return True
+        return False
+
+    try:
+        import pandas as pd
+        if hasattr(store, "columns") and "id" in store.columns:
+            matches = store["id"].astype(str) == target_id
+            if not matches.any():
+                return False
+            store.loc[matches, "distance"] = distance_value
+            store.loc[matches, "distance_raw"] = distance_value
+            _save_activity_store(store)
+            return True
+    except Exception:
+        pass
+
+    return False
+
+
+def get_month_activity_rows(month_value, now=None):
+    if month_value is None:
+        now = now or datetime.now()
+        month_value = now.strftime("%Y-%m")
+
+    if not re.fullmatch(r"\d{4}-\d{2}", str(month_value)):
+        raise ValueError("month must be in YYYY-MM format")
+
+    rows = []
+    target_month = str(month_value)
+
+    for activity in load_pickled_activities():
+        if not isinstance(activity, dict):
+            continue
+
+        activity_dt = _parse_activity_datetime(activity)
+        if activity_dt is None:
+            continue
+        if activity_dt.strftime("%Y-%m") != target_month:
+            continue
+
+        rows.append({
+            "id": activity.get("id"),
+            "distance": _activity_distance_meters(activity),
+            "date": activity_dt.strftime("%Y-%m-%d %H:%M:%S"),
+        })
+
+    rows.sort(key=lambda row: row["date"])
+    return rows
+
+
+def print_month_activities(month_value=None, now=None):
+    rows = get_month_activity_rows(month_value, now=now)
+    if not rows:
+        label = month_value or (now or datetime.now()).strftime("%Y-%m")
+        print(f"No activities for {label} in pickle.")
+        return rows
+
+    print("ID | Distance | Date")
+    for row in rows:
+        print(f"{row['id']} | {row['distance']} | {row['date']}")
+    return rows
 
 
 def copyGPXToHeatmapFolder(gpxfile):
@@ -540,12 +810,23 @@ def _parse_activity_datetime(activity):
         if not value:
             continue
         try:
-            return datetime.fromisoformat(value.replace('Z', '+00:00'))
+            dt = datetime.fromisoformat(value.replace('Z', '+00:00'))
         except ValueError:
             try:
-                return datetime.strptime(value, '%Y-%m-%dT%H:%M:%S')
+                dt = datetime.strptime(value, '%Y-%m-%dT%H:%M:%S')
             except Exception:
                 continue
+
+        try:
+            # Normalize tz-aware datetimes to local naive datetimes so comparisons
+            # with naive `datetime.now()` work consistently.
+            if dt.tzinfo is not None:
+                dt = dt.astimezone().replace(tzinfo=None)
+        except Exception:
+            # If conversion fails, fall back to the parsed datetime as-is
+            pass
+
+        return dt
     return None
 
 
@@ -683,7 +964,41 @@ def downloadGPXFile():
     return activities
 
 
-def run():
+def run(argv=None):
+    parser = argparse.ArgumentParser(description="Strava heatmap sync helper")
+    parser.add_argument("--delete-activity-id", type=str, help="Delete an activity from the pickle by its ID and remove matching GPX files.")
+    parser.add_argument("--scan-heatmap-gpx-dir", action="store_true", help="Check the heatmap GPX directory against the pickle and print missing files.")
+    parser.add_argument("--update-distance-id", type=str, help="Set the stored distance for a pickle activity by its ID.") #gpx::2026-05-03-18-43-26_Abendradfahrt
+    parser.add_argument("--distance", type=float, help="Distance in meters to store for --update-distance-id.")
+    parser.add_argument("--show-month", type=str, help="Print activities for a given month in YYYY-MM format, e.g. 2026-09 or 2025-01.")
+    args = parser.parse_args(argv)
+
+    if args.delete_activity_id is not None:
+        deleted = delete_activity_by_id(args.delete_activity_id)
+        print(f"Deleted activity {args.delete_activity_id}: {deleted}")
+        return deleted
+
+    if args.update_distance_id is not None:
+        if args.distance is None:
+            raise SystemExit("--distance is required when using --update-distance-id")
+        updated = update_activity_distance_by_id(args.update_distance_id, args.distance)
+        print(f"Updated distance for activity {args.update_distance_id}: {updated}")
+        return updated
+
+    if args.show_month is not None:
+        try:
+            rows = print_month_activities(args.show_month)
+            return bool(rows)
+        except ValueError as exc:
+            raise SystemExit(str(exc))
+
+    if args.scan_heatmap_gpx_dir:
+        missing = scan_heatmap_gpx_dir()
+        print(json.dumps(missing, ensure_ascii=False))
+        return bool(missing)
+
+    scan_heatmap_gpx_dir()
+
     client = connect_mqtt()
     client.loop_start()
 
@@ -694,12 +1009,11 @@ def run():
         if not activities:
             activities = load_pickled_activities()
 
-
     publish_pickle_summary(client)
 
     create_last_ride_html_file("strava_analyse.html", activities)
     client.loop_stop()
-
+    return True
 
 
 if __name__ == '__main__':
