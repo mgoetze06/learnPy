@@ -2,14 +2,27 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import json
 import math
+import uuid
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Iterable
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter
+from PIL import Image, ImageDraw, ImageFilter, ImageOps
+
+
+def _sanitize_output_path(path: str | Path) -> Path:
+    target = Path(path)
+    cleaned_name = target.name.strip("\"'")
+    cleaned_name = cleaned_name.strip()
+    cleaned_name = "".join(ch for ch in cleaned_name if ch not in '<>:"/\\|?*')
+    cleaned_name = cleaned_name.rstrip(" .")
+    if not cleaned_name:
+        raise ValueError(f"Output path resolves to an invalid filename: {path}")
+    return target.with_name(cleaned_name)
 
 
 def _load_strava_heatmap_module():
@@ -337,7 +350,12 @@ def _find_photo_track_positions(folder: str | Path | None, track_points: list[tu
     return [(marker["lat"], marker["lon"]) for marker in markers]
 
 
-def _find_photo_track_markers(folder: str | Path | None, track_points: list[tuple[float, float, datetime]]) -> list[dict]:
+def _find_photo_track_markers(
+    folder: str | Path | None,
+    track_points: list[tuple[float, float, datetime]],
+    *,
+    exclude_paths: set[str | Path] | None = None,
+) -> list[dict]:
     if not track_points:
         return []
 
@@ -345,10 +363,15 @@ def _find_photo_track_markers(folder: str | Path | None, track_points: list[tupl
     if directory is None or not directory.exists() or not directory.is_dir():
         return []
 
+    excluded = {Path(path).resolve() for path in (exclude_paths or set())}
     photo_extensions = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
     photo_timestamps: list[tuple[Path, datetime]] = []
 
     for path in sorted(directory.iterdir()):
+        if path.resolve() in excluded:
+            continue
+        if "_heatmap" in path.stem.lower() or "_track" in path.stem.lower():
+            continue
         if not path.is_file() or path.suffix.lower() not in photo_extensions:
             continue
 
@@ -496,7 +519,7 @@ def _draw_start_marker(draw: ImageDraw.ImageDraw, center: tuple[float, float]) -
 
 def _draw_finish_flag_marker(draw: ImageDraw.ImageDraw, center: tuple[float, float]) -> None:
     x, y = center
-    radius = 5
+    radius = 11
     draw.ellipse((x - radius, y - radius, x + radius, y + radius), fill=(255, 255, 255), outline=(0, 0, 0), width=2)
     for index in range(4):
         start_angle = 45 + index * 90
@@ -512,12 +535,110 @@ def _draw_camera_marker(draw: ImageDraw.ImageDraw, center: tuple[float, float]) 
     draw.ellipse((x - 1.5, y - 1.5, x + 1.5, y + 1.5), fill=(30, 30, 30))
 
 
+def _draw_cluster_connector(draw: ImageDraw.ImageDraw, anchor: tuple[float, float], target: tuple[float, float]) -> None:
+    x1, y1 = anchor
+    x2, y2 = target
+    draw.line((x1, y1, x2, y2), fill=(30, 30, 30, 220), width=2)
+    draw.line((x1, y1, x2, y2), fill=(255, 255, 255, 120), width=2)
+
+
 def _is_in_exclusion_zone(point: tuple[float, float], start_xy: tuple[float, float], end_xy: tuple[float, float], image_size: tuple[int, int]) -> bool:
     threshold = max(18.0, image_size[1] * 0.05)
     for center in (start_xy, end_xy):
         if math.hypot(point[0] - center[0], point[1] - center[1]) <= threshold:
             return True
     return False
+
+
+def _distance_to_segment(point_x: float, point_y: float, x1: float, y1: float, x2: float, y2: float) -> float:
+    dx = x2 - x1
+    dy = y2 - y1
+    if dx == 0 and dy == 0:
+        return math.hypot(point_x - x1, point_y - y1)
+    projection = ((point_x - x1) * dx + (point_y - y1) * dy) / (dx * dx + dy * dy)
+    projection = max(0.0, min(1.0, projection))
+    px = x1 + projection * dx
+    py = y1 + projection * dy
+    return math.hypot(point_x - px, point_y - py)
+
+
+def _box_overlaps_track(box: tuple[int, int, int, int], track_points: list[tuple[float, float]], margin: float = 12.0) -> bool:
+    if not track_points or len(track_points) < 2:
+        return False
+
+    left, top, right, bottom = box
+    cx = (left + right) / 2.0
+    cy = (top + bottom) / 2.0
+    corners = [
+        (left, top),
+        (right, top),
+        (left, bottom),
+        (right, bottom),
+        (cx, cy),
+    ]
+
+    step_size = max(1, len(track_points) // 8)
+    sampled = track_points[::step_size]
+    if not sampled:
+        sampled = track_points
+
+    for start, end in zip(sampled, sampled[1:]):
+        x1, y1 = start
+        x2, y2 = end
+        min_distance = min(
+            _distance_to_segment(px, py, x1, y1, x2, y2)
+            for px, py in corners
+        )
+        if min_distance <= margin + max((right - left), (bottom - top)) * 0.25:
+            return True
+    return False
+
+
+def _box_has_track_underneath(box: tuple[int, int, int, int], track_points: list[tuple[float, float]], margin: float = 12.0) -> bool:
+    if not track_points or len(track_points) < 2:
+        return False
+
+    left, top, right, bottom = box
+    xs = [left, (left + right) / 2.0, right]
+    ys = [top, (top + bottom) / 2.0, bottom]
+    probe_points = []
+    for x in xs:
+        for y in ys:
+            probe_points.append((x, y))
+    for x in range(int(left), int(right) + 1, max(4, int((right - left) / 4))):
+        for y in range(int(top), int(bottom) + 1, max(4, int((bottom - top) / 4))):
+            probe_points.append((float(x), float(y)))
+
+    step_size = max(1, len(track_points) // 12)
+    sampled = track_points[::step_size]
+    if not sampled:
+        sampled = track_points
+
+    for start, end in zip(sampled, sampled[1:]):
+        x1, y1 = start
+        x2, y2 = end
+        if any(_distance_to_segment(px, py, x1, y1, x2, y2) <= margin for px, py in probe_points):
+            return True
+    return False
+
+
+def _expand_box(box: tuple[int, int, int, int], padding: int) -> tuple[int, int, int, int]:
+    left, top, right, bottom = box
+    return (left - padding, top - padding, right + padding, bottom + padding)
+
+
+def _box_overlap_ratio(box_a: tuple[int, int, int, int], box_b: tuple[int, int, int, int]) -> float:
+    left = max(box_a[0], box_b[0])
+    top = max(box_a[1], box_b[1])
+    right = min(box_a[2], box_b[2])
+    bottom = min(box_a[3], box_b[3])
+    if right <= left or bottom <= top:
+        return 0.0
+    overlap_area = (right - left) * (bottom - top)
+    area_a = max(1, (box_a[2] - box_a[0]) * (box_a[3] - box_a[1]))
+    area_b = max(1, (box_b[2] - box_b[0]) * (box_b[3] - box_b[1]))
+    threshold_area = min(area_a, area_b)
+    return overlap_area / threshold_area if threshold_area else 0.0
 
 
 def _compute_non_overlapping_preview_boxes(
@@ -527,6 +648,9 @@ def _compute_non_overlapping_preview_boxes(
     image_size: tuple[int, int],
     gap: int = 24,
     existing: list[tuple[int, int, int, int]] | None = None,
+    track_points: list[tuple[float, float]] | None = None,
+    start_xy: tuple[float, float] | None = None,
+    end_xy: tuple[float, float] | None = None,
 ) -> list[tuple[int, int, int, int]]:
     placed = list(existing or [])
     boxes: list[tuple[int, int, int, int]] = []
@@ -534,26 +658,61 @@ def _compute_non_overlapping_preview_boxes(
     def overlaps(box_a: tuple[int, int, int, int], box_b: tuple[int, int, int, int]) -> bool:
         return not (box_a[2] <= box_b[0] or box_a[0] >= box_b[2] or box_a[3] <= box_b[1] or box_a[1] >= box_b[3])
 
+    def is_valid_box(box: tuple[int, int, int, int]) -> bool:
+        padding = 4
+        padded_box = _expand_box(box, padding)
+        if padded_box[0] < 0 or padded_box[1] < 0 or padded_box[2] > image_size[0] or padded_box[3] > image_size[1]:
+            return False
+
+        box_center_x = (box[0] + box[2]) / 2.0
+        box_center_y = (box[1] + box[3]) / 2.0
+        min_camera_gap = max(26.0, thumb_size * 0.9)
+        if math.hypot(box_center_x - center[0], box_center_y - center[1]) < min_camera_gap:
+            return False
+
+        for other in placed:
+            other_center_x = (other[0] + other[2]) / 2.0
+            other_center_y = (other[1] + other[3]) / 2.0
+            if math.hypot(box_center_x - other_center_x, box_center_y - other_center_y) < max(12.0, thumb_size * 0.35):
+                pass
+            if overlaps(padded_box, other):
+                ratio = _box_overlap_ratio(padded_box, other)
+                if ratio > 0.5:
+                    return False
+
+        if track_points is not None:
+            track_margin = max(18.0, thumb_size * 0.7 + padding)
+            if _box_overlaps_track(padded_box, track_points, margin=track_margin):
+                return False
+            if _box_has_track_underneath(box, track_points, margin=track_margin):
+                return False
+        if start_xy is not None and math.hypot((box[0] + box[2]) / 2.0 - start_xy[0], (box[1] + box[3]) / 2.0 - start_xy[1]) <= max(28.0, thumb_size * 1.1 + padding):
+            return False
+        if end_xy is not None and math.hypot((box[0] + box[2]) / 2.0 - end_xy[0], (box[1] + box[3]) / 2.0 - end_xy[1]) <= max(28.0, thumb_size * 1.1 + padding):
+            return False
+        return True
+
     for center in camera_points:
         cx, cy = center
-        step = max(12, thumb_size // 2)
         candidate = None
-        for distance in range(0, 220, step):
-            for angle in range(0, 360, 45):
-                dx = round(math.cos(math.radians(angle)) * distance)
-                dy = round(math.sin(math.radians(angle)) * distance)
-                left = int(cx - thumb_size / 2 + dx)
-                top = int(cy - thumb_size - gap + dy)
+        radius_step = max(6, int(round(min(image_size) * 0.015)))
+        max_radius = max(1, int(round(min(image_size) * 0.42)))
+        candidate_positions: list[tuple[int, int, int, int]] = []
+        for radius in range(0, max_radius + 1, radius_step):
+            for index in range(36):
+                angle = math.radians(index * (360 / 36))
+                dx = int(round(math.cos(angle) * radius))
+                dy = int(round(math.sin(angle) * radius))
+                offset = max(20, int(round(thumb_size * 0.9)))
+                left = int(round(cx + dx - thumb_size / 2))
+                top = int(round(cy + dy - thumb_size / 2 - offset))
                 right = left + thumb_size
                 bottom = top + thumb_size
-                if left < 0 or top < 0 or right > image_size[0] or bottom > image_size[1]:
-                    continue
-                box = (left, top, right, bottom)
-                if any(overlaps(box, other) for other in placed):
-                    continue
+                candidate_positions.append((left, top, right, bottom))
+
+        for box in candidate_positions:
+            if is_valid_box(box):
                 candidate = box
-                break
-            if candidate is not None:
                 break
 
         if candidate is None:
@@ -564,13 +723,96 @@ def _compute_non_overlapping_preview_boxes(
     return boxes
 
 
-def _annotate_heatmap_with_track_markers(image_path: str | Path, points: list[tuple[float, float]], photo_markers: list[dict]) -> None:
+PHOTO_LAYOUT_CACHE_VERSION = 2
+PHOTO_LAYOUT_CACHE_RUN_ID = uuid.uuid4().hex
+
+
+def _photo_layout_cache_path(image_path: str | Path) -> Path:
+    return Path(image_path).parent / ".photo_preview_layout_cache.json"
+
+
+def _render_cache_key(image_path: str | Path, image_size: tuple[int, int], *, render_variant: str = "default") -> str:
+    return f"{PHOTO_LAYOUT_CACHE_RUN_ID}:{render_variant}:{Path(image_path).resolve()}::{image_size[0]}x{image_size[1]}"
+
+
+def _photo_signature(path: str | Path) -> tuple[str, int, int]:
+    resolved = Path(path).resolve()
+    try:
+        stat = resolved.stat()
+        return (str(resolved), int(stat.st_mtime_ns), int(stat.st_size))
+    except OSError:
+        return (str(resolved), 0, 0)
+
+
+def _load_photo_layout_cache(image_path: str | Path, image_size: tuple[int, int], *, render_variant: str = "default") -> dict[str, dict]:
+    cache_path = _photo_layout_cache_path(image_path)
+    if not cache_path.exists():
+        return {}
+
+    try:
+        data = json.loads(cache_path.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+    if not isinstance(data, dict):
+        return {}
+    if data.get("cache_version") != PHOTO_LAYOUT_CACHE_VERSION:
+        return {}
+    if data.get("image_size") != [image_size[0], image_size[1]]:
+        return {}
+
+    cache_key = _render_cache_key(image_path, image_size, render_variant=render_variant)
+    entries = data.get("entries", {})
+    if not isinstance(entries, dict):
+        return {}
+    reuse_entries = entries.get(cache_key, {})
+    return reuse_entries if isinstance(reuse_entries, dict) else {}
+
+
+def _save_photo_layout_cache(image_path: str | Path, image_size: tuple[int, int], entries: dict[str, dict], *, render_variant: str = "default") -> None:
+    cache_path = _photo_layout_cache_path(image_path)
+    cache_key = _render_cache_key(image_path, image_size, render_variant=render_variant)
+    try:
+        existing = {}
+        if cache_path.exists():
+            try:
+                existing = json.loads(cache_path.read_text(encoding="utf-8"))
+            except Exception:
+                existing = {}
+        if not isinstance(existing, dict):
+            existing = {}
+        existing["cache_version"] = PHOTO_LAYOUT_CACHE_VERSION
+        existing["image_size"] = [image_size[0], image_size[1]]
+        rendered_entries = existing.get("entries", {}) if isinstance(existing.get("entries", {}), dict) else {}
+        rendered_entries = {k: v for k, v in rendered_entries.items() if k.startswith(f"{PHOTO_LAYOUT_CACHE_RUN_ID}:")}
+        rendered_entries[cache_key] = entries
+        existing["entries"] = rendered_entries
+        cache_path.write_text(json.dumps(existing, sort_keys=True), encoding="utf-8")
+    except Exception:
+        return
+
+
+def _build_photo_frame(photo: Image.Image, thumb_size: int, padding: int = 3) -> Image.Image:
+    image = photo.convert("RGBA")
+    crop_size = min(image.width, image.height)
+    square_crop = ImageOps.fit(image, (crop_size, crop_size), method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
+    resized = square_crop.resize((thumb_size, thumb_size), Image.Resampling.LANCZOS)
+
+    frame = Image.new("RGBA", (thumb_size + 2 * padding, thumb_size + 2 * padding), (0, 0, 0, 0))
+    frame.paste(resized, (padding, padding), resized)
+    ImageDraw.Draw(frame).rectangle((0, 0, frame.width - 1, frame.height - 1), outline=(255, 255, 255, 160), width=1)
+    return frame
+
+
+def _annotate_heatmap_with_track_markers(image_path: str | Path, points: list[tuple[float, float]], photo_markers: list[dict], *, render_variant: str = "default") -> None:
     if not points:
         return
 
     path = Path(image_path)
     if not path.exists():
         return
+
+    print(f"[photo] evaluating {len(photo_markers)} image markers for {path.name}")
 
     try:
         with Image.open(path) as image:
@@ -592,50 +834,111 @@ def _annotate_heatmap_with_track_markers(image_path: str | Path, points: list[tu
                     "xy": _project_latlon_to_image(lat, lon, overlay.size, points),
                 })
 
-            placed_preview_boxes: list[tuple[int, int, int, int]] = []
-            for entry in projected_markers:
-                marker = entry["marker"]
-                camera_xy = entry["xy"]
-                if _is_in_exclusion_zone(camera_xy, start_xy, end_xy, overlay.size):
-                    continue
+            valid_markers = [entry for entry in projected_markers if not _is_in_exclusion_zone(entry["xy"], start_xy, end_xy, overlay.size)]
+            print(f"[photo] {len(valid_markers)} valid markers remain after exclusion checks")
+            cache_entries = _load_photo_layout_cache(path, overlay.size, render_variant=render_variant)
+            cache_ready = bool(cache_entries)
+            for entry in valid_markers:
+                marker_path = Path(entry["marker"]["path"])
+                key = str(marker_path.resolve())
+                if key not in cache_entries:
+                    cache_ready = False
+                    break
+                signature = _photo_signature(marker_path)
+                cached_signature = cache_entries[key].get("signature")
+                if cached_signature != list(signature):
+                    cache_ready = False
+                    break
 
-                other_points = [
-                    other["xy"]
-                    for other in projected_markers
-                    if other is not entry and not _is_in_exclusion_zone(other["xy"], start_xy, end_xy, overlay.size)
-                ]
+            if cache_ready:
+                pending_thumbs: list[tuple[Path, tuple[int, int, int, int], int, int]] = []
+                for entry in valid_markers:
+                    marker_path = Path(entry["marker"]["path"])
+                    key = str(marker_path.resolve())
+                    cached = cache_entries[key]
+                    preview_box = tuple(cached["box"])
+                    thumb_size = int(cached["thumb_size"])
+                    padding = 3
+                    preview_anchor = (
+                        float(preview_box[0] + (thumb_size + 2 * padding) / 2),
+                        float(preview_box[1] + (thumb_size + 2 * padding)),
+                    )
+                    _draw_cluster_connector(draw, preview_anchor, entry["xy"])
+                    _draw_camera_marker(draw, entry["xy"])
+                    pending_thumbs.append((marker_path, preview_box, thumb_size, padding))
+
+                for marker_path, preview_box, thumb_size, padding in pending_thumbs:
+                    try:
+                        with Image.open(marker_path) as photo:
+                            frame = _build_photo_frame(photo, thumb_size, padding=padding)
+                            overlay.paste(frame, (preview_box[0], preview_box[1]), frame)
+                    except Exception:
+                        pass
+                overlay.save(path)
+                return
+
+            track_pixels = [
+                _project_latlon_to_image(float(lat), float(lon), overlay.size, points)
+                for lat, lon, *_ in points
+            ]
+            placed_preview_boxes: list[tuple[int, int, int, int]] = []
+            next_cache_entries: dict[str, dict] = {}
+            pending_thumbs: list[tuple[Path, tuple[int, int, int, int], int, int]] = []
+
+            for index, entry in enumerate(valid_markers, start=1):
+                camera_xy = entry["xy"]
+                print(f"[photo] placing preview {index}/{len(valid_markers)}")
                 nearest_distance = min(
-                    (math.hypot(camera_xy[0] - other[0], camera_xy[1] - other[1]) for other in other_points),
+                    (math.hypot(camera_xy[0] - other["xy"][0], camera_xy[1] - other["xy"][1]) for other in valid_markers if other is not entry),
                     default=float("inf"),
                 )
-                is_clustered = nearest_distance <= overlay.height * 0.18
+                is_clustered = nearest_distance <= overlay.height * 0.08
                 ratio = 0.10 if is_clustered else 0.15
                 thumb_side = max(32, int(round(overlay.height * ratio)))
                 thumb_side = min(thumb_side, 150)
-                gap = 24 if is_clustered else 30
+                gap = 22 if is_clustered else 30
 
-                photo_path = marker["path"]
+                preview_boxes = _compute_non_overlapping_preview_boxes(
+                    [camera_xy],
+                    thumb_size=thumb_side,
+                    image_size=overlay.size,
+                    gap=gap,
+                    existing=placed_preview_boxes,
+                    track_points=track_pixels,
+                    start_xy=start_xy,
+                    end_xy=end_xy,
+                )
+                if not preview_boxes:
+                    continue
+
+                preview_box = preview_boxes[0]
+                padding = 3
+                frame_box = _expand_box(preview_box, padding)
+                marker_path = Path(entry["marker"]["path"])
+                key = str(marker_path.resolve())
+                next_cache_entries[key] = {
+                    "signature": list(_photo_signature(marker_path)),
+                    "thumb_size": thumb_side,
+                    "box": [int(frame_box[0]), int(frame_box[1]), int(frame_box[2]), int(frame_box[3])],
+                }
+                preview_anchor = (
+                    float(frame_box[0] + (thumb_side + 2 * padding) / 2),
+                    float(frame_box[1] + (thumb_side + 2 * padding)),
+                )
+                _draw_cluster_connector(draw, preview_anchor, entry["xy"])
+                _draw_camera_marker(draw, entry["xy"])
+                pending_thumbs.append((marker_path, frame_box, thumb_side, padding))
+                placed_preview_boxes.append(frame_box)
+
+            for marker_path, preview_box, thumb_size, padding in pending_thumbs:
                 try:
-                    with Image.open(photo_path) as photo:
-                        thumb = photo.convert("RGBA")
-                        thumb = thumb.resize((thumb_side, thumb_side), Image.Resampling.LANCZOS)
-                        preview_boxes = _compute_non_overlapping_preview_boxes(
-                            [camera_xy],
-                            thumb_size=thumb_side,
-                            image_size=overlay.size,
-                            gap=gap,
-                            existing=placed_preview_boxes,
-                        )
-                        if not preview_boxes:
-                            continue
-                        preview_box = preview_boxes[0]
-                        placed_preview_boxes.append(preview_box)
-                        overlay.paste(thumb, (preview_box[0], preview_box[1]), thumb)
+                    with Image.open(marker_path) as photo:
+                        frame = _build_photo_frame(photo, thumb_size, padding=padding)
+                        overlay.paste(frame, (preview_box[0], preview_box[1]), frame)
                 except Exception:
                     pass
 
-                _draw_camera_marker(draw, camera_xy)
-
+            _save_photo_layout_cache(path, overlay.size, next_cache_entries, render_variant=render_variant)
             overlay.save(path)
     except Exception:
         return
@@ -693,8 +996,9 @@ def render_gpx_heatmap(
     longitudes = [lon for _, lon in points]
     bounds = (min(latitudes), max(latitudes), min(longitudes), max(longitudes))
 
-    target = Path(output_path) if output_path is not None else source.with_name(f"{source.stem}_heatmap.png")
+    target = _sanitize_output_path(output_path) if output_path is not None else _sanitize_output_path(source.with_name(f"{source.stem}_heatmap.png"))
     target.parent.mkdir(parents=True, exist_ok=True)
+    print(f"[render] generating heatmap for {source.name} -> {target.name}")
 
     heatmap_func = generate_heatmap_from_points
     if heatmap_func is None:
@@ -726,10 +1030,11 @@ def render_gpx_heatmap(
         bounds=bounds,
     )
 
-    if include_photo_markers:
+    if include_photo_markers or natural:
+        print(f"[render] adding annotations for {target.name}")
         track_points_with_times = _extract_track_points_with_times(source)
-        photo_markers = _find_photo_track_markers(source.parent, track_points_with_times)
-        _annotate_heatmap_with_track_markers(target, points, photo_markers)
+        photo_markers = _find_photo_track_markers(source.parent, track_points_with_times, exclude_paths={target.resolve()}) if include_photo_markers else []
+        _annotate_heatmap_with_track_markers(target, points, photo_markers, render_variant="natural" if natural else "standard")
     return target
 
 
@@ -749,10 +1054,10 @@ def main() -> None:
     output_dir = Path(args.output_dir) if args.output_dir else source.parent
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    standard_path = output_dir / f"{source.stem}_heatmap_standard.png"
-    standard_no_images_path = output_dir / f"{source.stem}_heatmap_standard_no_images.png"
-    natural_path = output_dir / f"{source.stem}_heatmap_natural.png"
-    natural_no_images_path = output_dir / f"{source.stem}_heatmap_natural_no_images.png"
+    standard_path = _sanitize_output_path(output_dir / f"{source.stem}_heatmap_standard.png")
+    standard_no_images_path = _sanitize_output_path(output_dir / f"{source.stem}_heatmap_standard_no_images.png")
+    natural_path = _sanitize_output_path(output_dir / f"{source.stem}_heatmap_natural.png")
+    natural_no_images_path = _sanitize_output_path(output_dir / f"{source.stem}_heatmap_natural_no_images.png")
 
     render_gpx_heatmap(source, standard_path, zoom=args.zoom, sigma=args.sigma, natural=False, include_photo_markers=True)
     render_gpx_heatmap(source, standard_no_images_path, zoom=args.zoom, sigma=args.sigma, natural=False, include_photo_markers=False)
