@@ -645,11 +645,12 @@ def get_last_ride_html(activities, now=None):
     activity = _select_latest_activity(activities)
     period_summary = _get_activity_period_summary(activities, now=now)
     weekly_distance_summary = _get_weekly_distance_summary(activities, now=now)
-    weekly_chart_items = []
+    weekly_chart_markers = []
+    weekly_chart_points = []
     chart_width = 720
-    chart_height = 60
-    chart_top = 14
-    chart_bottom = 39
+    chart_height = 84
+    chart_top = 22
+    chart_bottom = 52
     bar_slot_width = chart_width / len(weekly_distance_summary)
     max_week_distance_km = max(
         (week["distance_meters"] / 1000 for week in weekly_distance_summary),
@@ -657,29 +658,28 @@ def get_last_ride_html(activities, now=None):
     )
     for index, week in enumerate(weekly_distance_summary):
         distance_km = week["distance_meters"] / 1000
-        bar_height = (
-            distance_km / max_week_distance_km * (chart_bottom - chart_top)
-            if max_week_distance_km > 0 else 0
+        x = index * bar_slot_width + bar_slot_width / 2
+        y = (
+            chart_bottom - distance_km / max_week_distance_km * (chart_bottom - chart_top)
+            if max_week_distance_km > 0 else chart_bottom
         )
-        x = index * bar_slot_width + bar_slot_width * 0.25
-        bar_width = bar_slot_width * 0.5
-        y = chart_bottom - bar_height
-        label_x = index * bar_slot_width + bar_slot_width / 2
+        weekly_chart_points.append(f"{x:.1f},{y:.1f}")
         week_label = week["start"].strftime("%d.%m")
         tooltip = (
             f'{week["start"].strftime("%d.%m.%Y")}–'
             f'{week["end"].strftime("%d.%m.%Y")}: {distance_km:.1f} km'
         )
-        weekly_chart_items.append(
+        weekly_chart_markers.append(
             f'<g><title>{escape(tooltip)}</title>'
-            f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_width:.1f}" '
-            f'height="{bar_height:.1f}" rx="2" fill="#38bdf8" />'
-            f'<text x="{label_x:.1f}" y="10" text-anchor="middle" '
-            f'font-size="7" fill="#9ca3af">{distance_km:.1f}</text>'
-            f'<text x="{label_x:.1f}" y="53" text-anchor="middle" '
-            f'font-size="7" fill="#9ca3af">{week_label}</text></g>'
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3" fill="#38bdf8" '
+            f'stroke="#0f172a" stroke-width="1.5" />'
+            f'<text x="{x:.1f}" y="{y - 7:.1f}" text-anchor="middle" '
+            f'font-size="12" fill="#e5e7eb">{distance_km:.1f}</text>'
+            f'<text x="{x:.1f}" y="78" text-anchor="middle" '
+            f'font-size="12" fill="#9ca3af">{week_label}</text></g>'
         )
-    weekly_chart = "".join(weekly_chart_items)
+    weekly_chart_polyline = " ".join(weekly_chart_points)
+    weekly_chart = "".join(weekly_chart_markers)
     activities_with_distance = [
         item for item in activities
         if isinstance(item, dict) and _activity_distance_meters(item) > 0
@@ -741,8 +741,8 @@ def get_last_ride_html(activities, now=None):
     </div>
     <div style=\"margin-top: 12px; overflow: hidden;\">
         <div class=\"meta\" style=\"margin-bottom: 4px;\">Wöchentliche Distanz · letzte 12 Wochen (km)</div>
-        <svg viewBox=\"0 0 {chart_width} {chart_height}\" role=\"img\" aria-label=\"Wöchentliche Distanz der letzten 12 Wochen\" style=\"display: block; width: 100%; height: auto; max-height: 60px;\">
-            <line x1=\"0\" y1=\"{chart_bottom}\" x2=\"{chart_width}\" y2=\"{chart_bottom}\" stroke=\"#374151\" />
+        <svg viewBox=\"0 0 {chart_width} {chart_height}\" role=\"img\" aria-label=\"Wöchentliche Distanz der letzten 12 Wochen\" style=\"display: block; width: 100%; height: auto; max-height: 84px;\">
+            <polyline points=\"{weekly_chart_polyline}\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />
             {weekly_chart}
         </svg>
     </div>
