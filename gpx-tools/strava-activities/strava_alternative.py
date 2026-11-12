@@ -561,12 +561,12 @@ def get_last_ride_html(activities, now=None):
     now = now or datetime.now()
     activity = _select_latest_activity(activities)
     period_summary = _get_activity_period_summary(activities, now=now)
-    valid_activities = [
+    activities_with_distance = [
         item for item in activities
         if isinstance(item, dict) and _activity_distance_meters(item) > 0
     ] if isinstance(activities, list) else []
     recent_activities = sorted(
-        valid_activities,
+        activities_with_distance,
         key=lambda item: _parse_activity_datetime(item) or datetime.min,
         reverse=True,
     )[:15]
@@ -575,8 +575,11 @@ def get_last_ride_html(activities, now=None):
         start_dt = _parse_activity_datetime(item)
         start_text = start_dt.strftime("%d.%m.%Y %H:%M:%S") if start_dt else "Unbekannt"
         distance_km = _activity_distance_meters(item) / 1000
+        duration_minutes = round(_activity_moving_time_seconds(item) / 60)
+        duration_text = _format_duration(duration_minutes)
         activity_rows.append(
-            f"<tr><td>{escape(start_text)}</td><td>{distance_km:.2f} km</td></tr>"
+            f"<tr><td>{escape(start_text)}</td><td>{escape(duration_text)}</td>"
+            f"<td>{distance_km:.2f} km</td></tr>"
         )
     activity_rows = "".join(activity_rows)
     data_block = f"""<div class=\"card\" style=\"width: min(100%, 720px); box-sizing: border-box; padding: 14px; background: #111827; border: 1px solid #374151; box-shadow: 0 2px 8px rgba(0,0,0,0.35);\">
@@ -605,6 +608,7 @@ def get_last_ride_html(activities, now=None):
             <thead>
                 <tr style=\"color: #9ca3af; border-bottom: 1px solid #374151;\">
                     <th style=\"padding: 4px 3px;\">Startzeit</th>
+                    <th style=\"padding: 4px 3px; text-align: right;\">Dauer</th>
                     <th style=\"padding: 4px 3px; text-align: right;\">Distanz</th>
                 </tr>
             </thead>
