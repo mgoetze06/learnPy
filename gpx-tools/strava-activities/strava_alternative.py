@@ -630,6 +630,15 @@ def get_last_ride_html(activities, now=None):
     name = escape(str(activity.get("name") or "Unbekannte Fahrt"))
     start_dt = _parse_activity_datetime(activity)
     start_text = start_dt.strftime("%d.%m.%Y %H:%M") if start_dt else "Unbekannt"
+    if start_dt:
+        start_iso = start_dt.strftime("%Y-%m-%dT%H:%M:%S")
+        start_relative = _format_relative_time(start_dt, now=now)
+        start_meta = (
+            f'<span id="activity-start" data-ts="{start_iso}">{start_text}</span> '
+            f'(<span id="activity-start-relative">{start_relative}</span>)'
+        )
+    else:
+        start_meta = start_text
     distance_km = round(_activity_distance_meters(activity) / 1000, 2)
     speed_kmh = round(_activity_average_speed(activity) * 3.6, 2)
     duration_minutes = round(_activity_moving_time_seconds(activity) / 60)
@@ -667,7 +676,7 @@ def get_last_ride_html(activities, now=None):
 <body>
     <div class=\"card\">
         <div class=\"title\">{name}</div>
-        <div class=\"meta\">{start_text}</div>
+        <div class=\"meta\">{start_meta}</div>
         <div class=\"stats\">
             <div class=\"stat\">
                 <div class=\"label\">Ø Geschwindigkeit</div>
@@ -700,9 +709,9 @@ def get_last_ride_html(activities, now=None):
                 return "vor " + days + " Tag" + (days !== 1 ? "en" : "");
             }}
 
-            function updateRelative() {{
-                var tsEl = document.getElementById('last-update');
-                var relEl = document.getElementById('last-update-relative');
+            function updateRelative(tsId, relId) {{
+                var tsEl = document.getElementById(tsId);
+                var relEl = document.getElementById(relId);
                 if (!tsEl || !relEl) return;
                 var iso = tsEl.getAttribute('data-ts');
                 if (!iso) return;
@@ -710,8 +719,12 @@ def get_last_ride_html(activities, now=None):
             }}
 
             // Update immediately and then every 15 seconds
-            updateRelative();
-            setInterval(updateRelative, 15000);
+            function updateRelativeTimes() {{
+                updateRelative('last-update', 'last-update-relative');
+                updateRelative('activity-start', 'activity-start-relative');
+            }}
+            updateRelativeTimes();
+            setInterval(updateRelativeTimes, 15000);
         }})();
     </script>
 </body>
