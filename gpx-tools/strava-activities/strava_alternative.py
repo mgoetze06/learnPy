@@ -510,10 +510,10 @@ def _get_activity_period_summary(activities, now=None):
     end_of_week = start_of_week + timedelta(days=6, hours=23, minutes=59, seconds=59)
 
     summary = {
-        "total": {"count": 0, "elevation_gain": 0},
-        "this_week": {"count": 0, "elevation_gain": 0},
-        "this_month": {"count": 0, "elevation_gain": 0},
-        "this_year": {"count": 0, "elevation_gain": 0},
+        "total": {"count": 0, "elevation_gain": 0, "distance_meters": 0.0},
+        "this_week": {"count": 0, "elevation_gain": 0, "distance_meters": 0.0},
+        "this_month": {"count": 0, "elevation_gain": 0, "distance_meters": 0.0},
+        "this_year": {"count": 0, "elevation_gain": 0, "distance_meters": 0.0},
     }
 
     if not isinstance(activities, list):
@@ -525,9 +525,11 @@ def _get_activity_period_summary(activities, now=None):
 
         activity_dt = _parse_activity_datetime(activity)
         elevation_gain = _get_activity_elevation_gain(activity)
+        distance_meters = _activity_distance_meters(activity)
 
         summary["total"]["count"] += 1
         summary["total"]["elevation_gain"] += elevation_gain
+        summary["total"]["distance_meters"] += distance_meters
 
         if activity_dt is None:
             continue
@@ -535,14 +537,17 @@ def _get_activity_period_summary(activities, now=None):
         if activity_dt.year == now.year:
             summary["this_year"]["count"] += 1
             summary["this_year"]["elevation_gain"] += elevation_gain
+            summary["this_year"]["distance_meters"] += distance_meters
 
         if activity_dt.year == now.year and activity_dt.month == now.month:
             summary["this_month"]["count"] += 1
             summary["this_month"]["elevation_gain"] += elevation_gain
+            summary["this_month"]["distance_meters"] += distance_meters
 
         if start_of_week <= activity_dt <= end_of_week:
             summary["this_week"]["count"] += 1
             summary["this_week"]["elevation_gain"] += elevation_gain
+            summary["this_week"]["distance_meters"] += distance_meters
 
     return summary
 
@@ -600,6 +605,21 @@ def get_last_ride_html(activities, now=None):
             <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Dieses Jahr</div>
             <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_year']['elevation_gain']} m</div>
             <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_year']['count']} Fahrten</div>
+        </div>
+    </div>
+    <div class=\"meta\" style=\"margin-top: 12px; margin-bottom: 8px;\">Distanz nach Zeitraum</div>
+    <div style=\"display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;\">
+        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
+            <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Diese Woche</div>
+            <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_week']['distance_meters'] / 1000:.1f} km</div>
+        </div>
+        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
+            <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Dieser Monat</div>
+            <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_month']['distance_meters'] / 1000:.1f} km</div>
+        </div>
+        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
+            <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Dieses Jahr</div>
+            <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_year']['distance_meters'] / 1000:.1f} km</div>
         </div>
     </div>
     <div style=\"margin-top: 12px; overflow-x: auto;\">
@@ -1065,9 +1085,10 @@ def run(argv=None):
     if _is_activity_store_fresh():
         activities = load_pickled_activities()
     else:
-        activities = downloadGPXFile()
+        downloaded_activities = downloadGPXFile()
+        activities = load_pickled_activities()
         if not activities:
-            activities = load_pickled_activities()
+            activities = downloaded_activities
 
     publish_pickle_summary(client)
 
