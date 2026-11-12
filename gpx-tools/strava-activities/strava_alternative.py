@@ -608,10 +608,78 @@ def _get_total_elevation_gain(activities):
     return summary["total"]["elevation_gain"]
 
 
+def _get_weekly_distance_summary(activities, now=None, week_count=12):
+    now = now or datetime.now()
+    current_monday = now.date() - timedelta(days=now.weekday())
+    first_monday = current_monday - timedelta(weeks=week_count - 1)
+    weeks = [
+        {"start": first_monday + timedelta(weeks=index), "distance_meters": 0.0}
+        for index in range(week_count)
+    ]
+
+    if isinstance(activities, list):
+        for activity in activities:
+            if not isinstance(activity, dict):
+                continue
+            activity_dt = _parse_activity_datetime(activity)
+            distance_meters = _valid_activity_distance_meters(activity)
+            if activity_dt is None or distance_meters is None:
+                continue
+
+            week_index = (activity_dt.date() - first_monday).days // 7
+            if 0 <= week_index < week_count:
+                weeks[week_index]["distance_meters"] += distance_meters
+
+    return [
+        {
+            "start": week["start"],
+            "end": week["start"] + timedelta(days=6),
+            "distance_meters": week["distance_meters"],
+        }
+        for week in weeks
+    ]
+
+
 def get_last_ride_html(activities, now=None):
     now = now or datetime.now()
     activity = _select_latest_activity(activities)
     period_summary = _get_activity_period_summary(activities, now=now)
+    weekly_distance_summary = _get_weekly_distance_summary(activities, now=now)
+    weekly_chart_items = []
+    chart_width = 720
+    chart_height = 60
+    chart_top = 14
+    chart_bottom = 39
+    bar_slot_width = chart_width / len(weekly_distance_summary)
+    max_week_distance_km = max(
+        (week["distance_meters"] / 1000 for week in weekly_distance_summary),
+        default=0,
+    )
+    for index, week in enumerate(weekly_distance_summary):
+        distance_km = week["distance_meters"] / 1000
+        bar_height = (
+            distance_km / max_week_distance_km * (chart_bottom - chart_top)
+            if max_week_distance_km > 0 else 0
+        )
+        x = index * bar_slot_width + bar_slot_width * 0.25
+        bar_width = bar_slot_width * 0.5
+        y = chart_bottom - bar_height
+        label_x = index * bar_slot_width + bar_slot_width / 2
+        week_label = week["start"].strftime("%d.%m")
+        tooltip = (
+            f'{week["start"].strftime("%d.%m.%Y")}–'
+            f'{week["end"].strftime("%d.%m.%Y")}: {distance_km:.1f} km'
+        )
+        weekly_chart_items.append(
+            f'<g><title>{escape(tooltip)}</title>'
+            f'<rect x="{x:.1f}" y="{y:.1f}" width="{bar_width:.1f}" '
+            f'height="{bar_height:.1f}" rx="2" fill="#38bdf8" />'
+            f'<text x="{label_x:.1f}" y="10" text-anchor="middle" '
+            f'font-size="7" fill="#9ca3af">{distance_km:.1f}</text>'
+            f'<text x="{label_x:.1f}" y="53" text-anchor="middle" '
+            f'font-size="7" fill="#9ca3af">{week_label}</text></g>'
+        )
+    weekly_chart = "".join(weekly_chart_items)
     activities_with_distance = [
         item for item in activities
         if isinstance(item, dict) and _activity_distance_meters(item) > 0
@@ -670,6 +738,13 @@ def get_last_ride_html(activities, now=None):
             <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_year']['distance_meters'] / 1000:.1f} km</div>
             <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_year']['count']} Fahrten</div>
         </div>
+    </div>
+    <div style=\"margin-top: 12px; overflow: hidden;\">
+        <div class=\"meta\" style=\"margin-bottom: 4px;\">Wöchentliche Distanz · letzte 12 Wochen (km)</div>
+        <svg viewBox=\"0 0 {chart_width} {chart_height}\" role=\"img\" aria-label=\"Wöchentliche Distanz der letzten 12 Wochen\" style=\"display: block; width: 100%; height: auto; max-height: 60px;\">
+            <line x1=\"0\" y1=\"{chart_bottom}\" x2=\"{chart_width}\" y2=\"{chart_bottom}\" stroke=\"#374151\" />
+            {weekly_chart}
+        </svg>
     </div>
     <div style=\"margin-top: 12px; overflow-x: auto;\">
         <div class=\"title\" style=\"font-size: 0.95rem;\">Letzte 15 Aktivitäten</div>
