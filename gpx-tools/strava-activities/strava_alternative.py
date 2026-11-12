@@ -26,6 +26,7 @@ HEATMAP_DIR = PROJECT_ROOT / "heatmap"
 HEATMAP_GPX_DIR = HEATMAP_DIR / "gpx"
 HEATMAP_LOG_FILE = HEATMAP_DIR / "log.txt"
 HEATMAP_ACTIVITY_PKL_FILE = HEATMAP_DIR / "activities.pkl"
+MANUAL_DISTANCE_OFFSETS_KM = {2026: 2970.7}
 
 
 def _load_activity_store():
@@ -549,6 +550,9 @@ def _get_activity_period_summary(activities, now=None):
             summary["this_week"]["elevation_gain"] += elevation_gain
             summary["this_week"]["distance_meters"] += distance_meters
 
+    summary["this_year"]["distance_meters"] += (
+        MANUAL_DISTANCE_OFFSETS_KM.get(now.year, 0) * 1000
+    )
     return summary
 
 
@@ -612,14 +616,17 @@ def get_last_ride_html(activities, now=None):
         <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
             <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Diese Woche</div>
             <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_week']['distance_meters'] / 1000:.1f} km</div>
+            <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_week']['count']} Fahrten</div>
         </div>
         <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
             <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Dieser Monat</div>
             <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_month']['distance_meters'] / 1000:.1f} km</div>
+            <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_month']['count']} Fahrten</div>
         </div>
         <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
             <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Dieses Jahr</div>
             <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_year']['distance_meters'] / 1000:.1f} km</div>
+            <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_year']['count']} Fahrten</div>
         </div>
     </div>
     <div style=\"margin-top: 12px; overflow-x: auto;\">
@@ -974,12 +981,13 @@ def get_pickle_summary():
 
     period_counts = _get_activity_period_counts(activities, now=now)
     total_elevation_gain = _get_total_elevation_gain(activities)
+    distance_year_offset = MANUAL_DISTANCE_OFFSETS_KM.get(now.year, 0)
 
     return {
         'timestamp': now.strftime('%Y-%m-%d, %H:%M:%S'),
         'distance_all': round(9135.2 + round(distance_all / 1000, 2), 2),
         'distance_month': round(distance_month / 1000, 2),
-        'distance_year': round(2970.7 + round(distance_year / 1000, 2), 2),
+        'distance_year': round(distance_year_offset + round(distance_year / 1000, 2), 2),
         'average_speed_month': average_speed_month,
         'average_distance_month': average_distance_month,
         'max_average_speed': max_average_speed,
