@@ -1,11 +1,14 @@
 import argparse
 import json
+import math
 import os
 import pickle
 import random
 import re
+import sys
 import time
 import shutil
+import traceback
 from datetime import datetime, timedelta
 from html import escape
 from pathlib import Path
@@ -56,15 +59,22 @@ def _save_activity_store(store):
         if isinstance(store, list):
             with open(HEATMAP_ACTIVITY_PKL_FILE, "wb") as file:
                 pickle.dump(store, file)
-            return
+            return True
 
         import pandas as pd
         store.to_pickle(HEATMAP_ACTIVITY_PKL_FILE)
+        return True
     except ImportError:
-        with open(HEATMAP_ACTIVITY_PKL_FILE, "wb") as file:
-            pickle.dump(store, file)
+        try:
+            with open(HEATMAP_ACTIVITY_PKL_FILE, "wb") as file:
+                pickle.dump(store, file)
+            return True
+        except Exception as e:
+            logToFile(f"Failed to save activity pickle: {e}")
+            return False
     except Exception as e:
         logToFile(f"Failed to save activity pickle: {e}")
+        return False
 
 
 def add_activity_to_pickle(activity: dict) -> bool:
@@ -335,6 +345,47 @@ def update_activity_distance_by_id(activity_id, distance):
         pass
 
     return False
+
+
+def _is_zero_distance_activity(activity):
+    for key in ("distance", "distance_raw", "moving_distance"):
+        value = activity.get(key)
+        if value is None:
+            continue
+        try:
+            distance = float(value)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(distance):
+            return distance == 0
+    return False
+
+
+def cleanup_zero_distance_activities():
+    store = _load_activity_store()
+
+    if isinstance(store, list):
+        cleaned_store = [
+            item for item in store
+            if not isinstance(item, dict) or not _is_zero_distance_activity(item)
+        ]
+    elif hasattr(store, "to_dict") and hasattr(store, "columns"):
+        distance_columns = {"distance", "distance_raw", "moving_distance"}
+        if not distance_columns.intersection(store.columns):
+            return 0
+
+        keep_rows = [
+            not _is_zero_distance_activity(item)
+            for item in store.to_dict(orient="records")
+        ]
+        cleaned_store = store.loc[keep_rows].copy()
+    else:
+        raise TypeError(f"Unsupported activity store type: {type(store).__name__}")
+
+    removed_count = len(store) - len(cleaned_store)
+    if removed_count and not _save_activity_store(cleaned_store):
+        raise OSError("Failed to save activity store after removing zero-distance activities")
+    return removed_count
 
 
 def get_month_activity_rows(month_value, now=None):
@@ -1052,7 +1103,7 @@ def downloadGPXFile():
     return activities
 
 
-def run(argv=None):
+def _run(argv=None):
     parser = argparse.ArgumentParser(description="Strava heatmap sync helper")
     parser.add_argument("--delete-activity-id", type=str, help="Delete an activity from the pickle by its ID and remove matching GPX files.")
     parser.add_argument("--scan-heatmap-gpx-dir", action="store_true", help="Check the heatmap GPX directory against the pickle and print missing files.")
@@ -1060,6 +1111,10 @@ def run(argv=None):
     parser.add_argument("--distance", type=float, help="Distance in meters to store for --update-distance-id.")
     parser.add_argument("--show-month", type=str, help="Print activities for a given month in YYYY-MM format, e.g. 2026-09 or 2025-01.")
     args = parser.parse_args(argv)
+
+    removed_count = cleanup_zero_distance_activities()
+    if removed_count:
+        print(f"Removed {removed_count} zero-distance activities from the pickle.")
 
     if args.delete_activity_id is not None:
         deleted = delete_activity_by_id(args.delete_activity_id)
@@ -1090,19 +1145,48 @@ def run(argv=None):
     client = connect_mqtt()
     client.loop_start()
 
-    if _is_activity_store_fresh():
-        activities = load_pickled_activities()
-    else:
-        downloaded_activities = downloadGPXFile()
-        activities = load_pickled_activities()
-        if not activities:
-            activities = downloaded_activities
+    try:
+        if _is_activity_store_fresh():
+            activities = load_pickled_activities()
+        else:
+            downloaded_activities = downloadGPXFile()
+            activities = load_pickled_activities()
+            if not activities:
+                activities = downloaded_activities
 
-    publish_pickle_summary(client)
+        publish_pickle_summary(client)
 
-    create_last_ride_html_file("strava_analyse.html", activities)
-    client.loop_stop()
-    return True
+        create_last_ride_html_file("strava_analyse.html", activities)
+        return True
+    finally:
+        client.loop_stop()
+
+
+def _log_script_error(error):
+    message = (
+        f"Unhandled script error ({type(error).__name__}): {error}\n"
+        f"{traceback.format_exc()}"
+    )
+    try:
+        logToFile(message)
+    except Exception as logging_error:
+        print(
+            f"{message}\nFailed to write error to log file: {logging_error}",
+            file=sys.stderr,
+        )
+
+
+def run(argv=None):
+    try:
+        return _run(argv)
+    except SystemExit as error:
+        if error.code in (0, None):
+            return True
+        _log_script_error(error)
+        return False
+    except Exception as error:
+        _log_script_error(error)
+        return False
 
 
 if __name__ == '__main__':
