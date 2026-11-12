@@ -554,7 +554,22 @@ def get_last_ride_html(activities, now=None):
     now = now or datetime.now()
     activity = _select_latest_activity(activities)
     period_summary = _get_activity_period_summary(activities, now=now)
-    data_block = f"""<div class=\"card\" style=\"margin-top: 16px; width: min(100%, 720px); background: #111827; border: 1px solid #374151; box-shadow: 0 2px 8px rgba(0,0,0,0.35);\">
+    valid_activities = [item for item in activities if isinstance(item, dict)] if isinstance(activities, list) else []
+    recent_activities = sorted(
+        valid_activities,
+        key=lambda item: _parse_activity_datetime(item) or datetime.min,
+        reverse=True,
+    )[:15]
+    activity_rows = []
+    for item in recent_activities:
+        start_dt = _parse_activity_datetime(item)
+        start_text = start_dt.strftime("%d.%m.%Y %H:%M:%S") if start_dt else "Unbekannt"
+        distance_km = _activity_distance_meters(item) / 1000
+        activity_rows.append(
+            f"<tr><td>{escape(start_text)}</td><td>{distance_km:.2f} km</td></tr>"
+        )
+    activity_rows = "".join(activity_rows)
+    data_block = f"""<div class=\"card\" style=\"margin-top: 16px; width: min(100%, 560px); box-sizing: border-box; padding: 14px; background: #111827; border: 1px solid #374151; box-shadow: 0 2px 8px rgba(0,0,0,0.35);\">
     <div class=\"title\">Daten</div>
     <div class=\"meta\">Höhenmeter nach Zeitraum</div>
     <div style=\"display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;\">
@@ -573,6 +588,18 @@ def get_last_ride_html(activities, now=None):
             <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_year']['elevation_gain']} m</div>
             <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_year']['count']} Fahrten</div>
         </div>
+    </div>
+    <div style=\"margin-top: 16px; overflow-x: auto;\">
+        <div class=\"title\" style=\"font-size: 0.95rem;\">Letzte 15 Aktivitäten</div>
+        <table style=\"width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left;\">
+            <thead>
+                <tr style=\"color: #9ca3af; border-bottom: 1px solid #374151;\">
+                    <th style=\"padding: 6px 4px;\">Startzeit</th>
+                    <th style=\"padding: 6px 4px; text-align: right;\">Distanz</th>
+                </tr>
+            </thead>
+            <tbody>{activity_rows}</tbody>
+        </table>
     </div>
 </div>"""
 
@@ -631,6 +658,10 @@ def get_last_ride_html(activities, now=None):
         .summary-item .value {{ font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px; }}
         .summary-note {{ margin-top: 10px; color: #9ca3af; font-size: 0.8rem; line-height: 1.4; }}
         .footer {{ margin-top: 14px; color: #9ca3af; font-size: 0.85rem; }}
+        table tbody tr {{ border-bottom: 1px solid #1f2937; }}
+        table tbody tr:last-child {{ border-bottom: none; }}
+        table tbody td {{ padding: 6px 4px; }}
+        table tbody td:last-child {{ text-align: right; white-space: nowrap; }}
     </style>
 </head>
 <body>
