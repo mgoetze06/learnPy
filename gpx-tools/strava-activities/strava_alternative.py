@@ -359,17 +359,19 @@ def cleanup_zero_distance_activities():
             item for item in store
             if not isinstance(item, dict) or _has_valid_activity_distance(item)
         ]
+        changed = cleaned_store != store
     elif hasattr(store, "to_dict") and hasattr(store, "columns"):
         keep_rows = [
             _has_valid_activity_distance(item)
             for item in store.to_dict(orient="records")
         ]
         cleaned_store = store.loc[keep_rows].copy()
+        changed = not cleaned_store.equals(store)
     else:
         raise TypeError(f"Unsupported activity store type: {type(store).__name__}")
 
     removed_count = len(store) - len(cleaned_store)
-    if removed_count and not _save_activity_store(cleaned_store):
+    if changed and not _save_activity_store(cleaned_store):
         raise OSError("Failed to save activity store after removing zero-distance activities")
     return removed_count
 
@@ -648,9 +650,9 @@ def get_last_ride_html(activities, now=None):
     weekly_chart_markers = []
     weekly_chart_points = []
     chart_width = 720
-    chart_height = 84
+    chart_height = 150
     chart_top = 22
-    chart_bottom = 52
+    chart_bottom = 104
     bar_slot_width = chart_width / len(weekly_distance_summary)
     max_week_distance_km = max(
         (week["distance_meters"] / 1000 for week in weekly_distance_summary),
@@ -675,7 +677,7 @@ def get_last_ride_html(activities, now=None):
             f'stroke="#0f172a" stroke-width="1.5" />'
             f'<text x="{x:.1f}" y="{y - 7:.1f}" text-anchor="middle" '
             f'font-size="12" fill="#e5e7eb">{distance_km:.1f}</text>'
-            f'<text x="{x:.1f}" y="78" text-anchor="middle" '
+            f'<text x="{x:.1f}" y="{chart_height - 18:.1f}" text-anchor="middle" '
             f'font-size="12" fill="#9ca3af">{week_label}</text></g>'
         )
     weekly_chart_polyline = " ".join(weekly_chart_points)
@@ -741,7 +743,7 @@ def get_last_ride_html(activities, now=None):
     </div>
     <div style=\"margin-top: 12px; overflow: hidden;\">
         <div class=\"meta\" style=\"margin-bottom: 4px;\">Wöchentliche Distanz · letzte 12 Wochen (km)</div>
-        <svg viewBox=\"0 0 {chart_width} {chart_height}\" role=\"img\" aria-label=\"Wöchentliche Distanz der letzten 12 Wochen\" style=\"display: block; width: 100%; height: auto; max-height: 84px;\">
+        <svg viewBox=\"0 0 {chart_width} {chart_height}\" role=\"img\" aria-label=\"Wöchentliche Distanz der letzten 12 Wochen\" style=\"display: block; width: 100%; height: auto; max-height: 150px;\">
             <polyline points=\"{weekly_chart_polyline}\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />
             {weekly_chart}
         </svg>
