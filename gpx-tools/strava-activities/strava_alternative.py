@@ -347,18 +347,8 @@ def update_activity_distance_by_id(activity_id, distance):
     return False
 
 
-def _is_zero_distance_activity(activity):
-    for key in ("distance", "distance_raw", "moving_distance"):
-        value = activity.get(key)
-        if value is None:
-            continue
-        try:
-            distance = float(value)
-        except (TypeError, ValueError):
-            continue
-        if math.isfinite(distance):
-            return distance == 0
-    return False
+def _has_valid_activity_distance(activity):
+    return _valid_activity_distance_meters(activity) is not None
 
 
 def cleanup_zero_distance_activities():
@@ -367,15 +357,11 @@ def cleanup_zero_distance_activities():
     if isinstance(store, list):
         cleaned_store = [
             item for item in store
-            if not isinstance(item, dict) or not _is_zero_distance_activity(item)
+            if not isinstance(item, dict) or _has_valid_activity_distance(item)
         ]
     elif hasattr(store, "to_dict") and hasattr(store, "columns"):
-        distance_columns = {"distance", "distance_raw", "moving_distance"}
-        if not distance_columns.intersection(store.columns):
-            return 0
-
         keep_rows = [
-            not _is_zero_distance_activity(item)
+            _has_valid_activity_distance(item)
             for item in store.to_dict(orient="records")
         ]
         cleaned_store = store.loc[keep_rows].copy()
@@ -577,9 +563,11 @@ def _get_activity_period_summary(activities, now=None):
 
         activity_dt = _parse_activity_datetime(activity)
         elevation_gain = _get_activity_elevation_gain(activity)
-        distance_meters = _activity_distance_meters(activity)
+        valid_distance_meters = _valid_activity_distance_meters(activity)
+        distance_meters = valid_distance_meters or 0.0
 
-        summary["total"]["count"] += 1
+        if valid_distance_meters is not None:
+            summary["total"]["count"] += 1
         summary["total"]["elevation_gain"] += elevation_gain
         summary["total"]["distance_meters"] += distance_meters
 
@@ -587,17 +575,20 @@ def _get_activity_period_summary(activities, now=None):
             continue
 
         if activity_dt.year == now.year:
-            summary["this_year"]["count"] += 1
+            if valid_distance_meters is not None:
+                summary["this_year"]["count"] += 1
             summary["this_year"]["elevation_gain"] += elevation_gain
             summary["this_year"]["distance_meters"] += distance_meters
 
         if activity_dt.year == now.year and activity_dt.month == now.month:
-            summary["this_month"]["count"] += 1
+            if valid_distance_meters is not None:
+                summary["this_month"]["count"] += 1
             summary["this_month"]["elevation_gain"] += elevation_gain
             summary["this_month"]["distance_meters"] += distance_meters
 
         if start_of_week <= activity_dt <= end_of_week:
-            summary["this_week"]["count"] += 1
+            if valid_distance_meters is not None:
+                summary["this_week"]["count"] += 1
             summary["this_week"]["elevation_gain"] += elevation_gain
             summary["this_week"]["distance_meters"] += distance_meters
 
@@ -969,15 +960,21 @@ def _parse_activity_datetime(activity):
 
 
 def _activity_distance_meters(activity):
+    return _valid_activity_distance_meters(activity) or 0.0
+
+
+def _valid_activity_distance_meters(activity):
     for key in ('distance', 'distance_raw', 'moving_distance'):
         value = activity.get(key)
         if value is None:
             continue
         try:
-            return float(value)
-        except Exception:
+            distance = float(value)
+        except (TypeError, ValueError):
             continue
-    return 0.0
+        if math.isfinite(distance) and distance > 0:
+            return distance
+    return None
 
 
 def _activity_average_speed(activity):
