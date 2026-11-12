@@ -433,7 +433,10 @@ def _select_latest_activity(activities):
     if not isinstance(activities, list):
         return None
 
-    valid_activities = [item for item in activities if isinstance(item, dict)]
+    valid_activities = [
+        item for item in activities
+        if isinstance(item, dict) and _activity_distance_meters(item) > 0
+    ]
     if not valid_activities:
         return None
 
@@ -468,7 +471,11 @@ def _format_relative_time(past_time, now=None):
         return f"vor {hours} Stunde{'n' if hours != 1 else ''}"
 
     days = hours // 24
-    return f"vor {days} Tag{'en' if days != 1 else ''}"
+    remaining_hours = hours % 24
+    return (
+        f"vor {days} Tag{'en' if days != 1 else ''} "
+        f"und {remaining_hours} Stunde{'n' if remaining_hours != 1 else ''}"
+    )
 
 
 def _format_duration(minutes):
@@ -554,7 +561,10 @@ def get_last_ride_html(activities, now=None):
     now = now or datetime.now()
     activity = _select_latest_activity(activities)
     period_summary = _get_activity_period_summary(activities, now=now)
-    valid_activities = [item for item in activities if isinstance(item, dict)] if isinstance(activities, list) else []
+    valid_activities = [
+        item for item in activities
+        if isinstance(item, dict) and _activity_distance_meters(item) > 0
+    ] if isinstance(activities, list) else []
     recent_activities = sorted(
         valid_activities,
         key=lambda item: _parse_activity_datetime(item) or datetime.min,
@@ -569,33 +579,33 @@ def get_last_ride_html(activities, now=None):
             f"<tr><td>{escape(start_text)}</td><td>{distance_km:.2f} km</td></tr>"
         )
     activity_rows = "".join(activity_rows)
-    data_block = f"""<div class=\"card\" style=\"margin-top: 16px; width: min(100%, 560px); box-sizing: border-box; padding: 14px; background: #111827; border: 1px solid #374151; box-shadow: 0 2px 8px rgba(0,0,0,0.35);\">
+    data_block = f"""<div class=\"card\" style=\"width: min(100%, 720px); box-sizing: border-box; padding: 14px; background: #111827; border: 1px solid #374151; box-shadow: 0 2px 8px rgba(0,0,0,0.35);\">
     <div class=\"title\">Daten</div>
     <div class=\"meta\">Höhenmeter nach Zeitraum</div>
-    <div style=\"display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px;\">
-        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 10px; text-align: center;\">
+    <div style=\"display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;\">
+        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
             <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Diese Woche</div>
             <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_week']['elevation_gain']} m</div>
             <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_week']['count']} Fahrten</div>
         </div>
-        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 10px; text-align: center;\">
+        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
             <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Dieser Monat</div>
             <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_month']['elevation_gain']} m</div>
             <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_month']['count']} Fahrten</div>
         </div>
-        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 10px; text-align: center;\">
+        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
             <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Dieses Jahr</div>
             <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_year']['elevation_gain']} m</div>
             <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_year']['count']} Fahrten</div>
         </div>
     </div>
-    <div style=\"margin-top: 16px; overflow-x: auto;\">
+    <div style=\"margin-top: 12px; overflow-x: auto;\">
         <div class=\"title\" style=\"font-size: 0.95rem;\">Letzte 15 Aktivitäten</div>
         <table style=\"width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left;\">
             <thead>
                 <tr style=\"color: #9ca3af; border-bottom: 1px solid #374151;\">
-                    <th style=\"padding: 6px 4px;\">Startzeit</th>
-                    <th style=\"padding: 6px 4px; text-align: right;\">Distanz</th>
+                    <th style=\"padding: 4px 3px;\">Startzeit</th>
+                    <th style=\"padding: 4px 3px; text-align: right;\">Distanz</th>
                 </tr>
             </thead>
             <tbody>{activity_rows}</tbody>
@@ -611,7 +621,7 @@ def get_last_ride_html(activities, now=None):
     <title>Letzte Fahrt</title>
     <style>
         body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f3f4f6; color: #111827; }}
-        .card {{ background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 20px; max-width: 460px; }}
+        .card {{ box-sizing: border-box; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 14px; width: min(100%, 720px); }}
         .title {{ font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }}
         .meta {{ color: #6b7280; font-size: 0.95rem; margin-bottom: 12px; }}
         .message {{ color: #374151; font-size: 0.95rem; line-height: 1.5; }}
@@ -651,12 +661,12 @@ def get_last_ride_html(activities, now=None):
     <meta http-equiv=\"refresh\" content=\"15\">
     <title>Letzte Fahrt</title>
     <style>
-        body {{ font-family: Arial, sans-serif; margin: 0; min-height: 100vh; padding: 20px; background: #0f172a; color: #e5e7eb; display: flex; flex-direction: column; gap: 16px; align-items: center; justify-content: flex-start; box-sizing: border-box; }}
-        .card {{ background: #111827; border: 1px solid #374151; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.35); padding: 20px; width: min(100%, 720px); }}
-        .title {{ font-size: 1.1rem; font-weight: 600; margin-bottom: 6px; color: #f9fafb; }}
-        .meta {{ color: #9ca3af; font-size: 0.95rem; margin-bottom: 16px; }}
-        .stats {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }}
-        .stat {{ background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 10px; text-align: center; }}
+        body {{ font-family: Arial, sans-serif; margin: 0; min-height: 100vh; padding: 12px; background: #0f172a; color: #e5e7eb; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: flex-start; box-sizing: border-box; }}
+        .card {{ box-sizing: border-box; background: #111827; border: 1px solid #374151; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.35); padding: 14px; width: min(100%, 720px); }}
+        .title {{ font-size: 1.05rem; font-weight: 600; margin-bottom: 5px; color: #f9fafb; }}
+        .meta {{ color: #9ca3af; font-size: 0.9rem; margin-bottom: 12px; }}
+        .stats {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }}
+        .stat {{ background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center; }}
         .label {{ font-size: 0.75rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; }}
         .value {{ font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px; }}
         .summary {{ margin-top: 14px; background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 12px; }}
@@ -666,10 +676,10 @@ def get_last_ride_html(activities, now=None):
         .summary-item .label {{ font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; }}
         .summary-item .value {{ font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px; }}
         .summary-note {{ margin-top: 10px; color: #9ca3af; font-size: 0.8rem; line-height: 1.4; }}
-        .footer {{ margin-top: 14px; color: #9ca3af; font-size: 0.85rem; }}
+        .footer {{ margin-top: 10px; color: #9ca3af; font-size: 0.82rem; }}
         table tbody tr {{ border-bottom: 1px solid #1f2937; }}
         table tbody tr:last-child {{ border-bottom: none; }}
-        table tbody td {{ padding: 6px 4px; }}
+        table tbody td {{ padding: 4px 3px; }}
         table tbody td:last-child {{ text-align: right; white-space: nowrap; }}
     </style>
 </head>
@@ -706,7 +716,9 @@ def get_last_ride_html(activities, now=None):
                 var hours = Math.floor(minutes / 60);
                 if (hours < 24) return "vor " + hours + " Stunde" + (hours !== 1 ? "n" : "");
                 var days = Math.floor(hours / 24);
-                return "vor " + days + " Tag" + (days !== 1 ? "en" : "");
+                var remainingHours = hours % 24;
+                return "vor " + days + " Tag" + (days !== 1 ? "en" : "") +
+                    " und " + remainingHours + " Stunde" + (remainingHours !== 1 ? "n" : "");
             }}
 
             function updateRelative(tsId, relId) {{
