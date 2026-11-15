@@ -29,6 +29,7 @@ HEATMAP_DIR = PROJECT_ROOT / "heatmap"
 HEATMAP_GPX_DIR = HEATMAP_DIR / "gpx"
 HEATMAP_LOG_FILE = HEATMAP_DIR / "log.txt"
 HEATMAP_ACTIVITY_PKL_FILE = HEATMAP_DIR / "activities.pkl"
+HEATMAP_LAST_REFRESH_FILE = HEATMAP_DIR / "last_refresh.txt"
 MANUAL_DISTANCE_OFFSETS_KM = {2026: 2970.7}
 
 
@@ -74,6 +75,34 @@ def _save_activity_store(store):
             return False
     except Exception as e:
         logToFile(f"Failed to save activity pickle: {e}")
+        return False
+
+
+def _read_activity_store_refresh_timestamp():
+    HEATMAP_DIR.mkdir(parents=True, exist_ok=True)
+    if not HEATMAP_LAST_REFRESH_FILE.is_file():
+        return 0.0
+
+    try:
+        value = HEATMAP_LAST_REFRESH_FILE.read_text(encoding="utf-8").strip()
+        if not value:
+            return 0.0
+        return float(value)
+    except (TypeError, ValueError):
+        try:
+            return HEATMAP_LAST_REFRESH_FILE.stat().st_mtime
+        except OSError:
+            return 0.0
+
+
+def _write_activity_store_refresh_timestamp(timestamp=None):
+    HEATMAP_DIR.mkdir(parents=True, exist_ok=True)
+    value = datetime.now().timestamp() if timestamp is None else float(timestamp)
+    try:
+        HEATMAP_LAST_REFRESH_FILE.write_text(str(value), encoding="utf-8")
+        return True
+    except Exception as exc:
+        logToFile(f"Failed to write last refresh timestamp: {exc}")
         return False
 
 
@@ -371,8 +400,10 @@ def cleanup_zero_distance_activities():
         raise TypeError(f"Unsupported activity store type: {type(store).__name__}")
 
     removed_count = len(store) - len(cleaned_store)
-    if changed and not _save_activity_store(cleaned_store):
-        raise OSError("Failed to save activity store after removing zero-distance activities")
+    if changed:
+        if not _save_activity_store(cleaned_store):
+            raise OSError("Failed to save activity store after removing zero-distance activities")
+        _write_activity_store_refresh_timestamp(0.0)
     return removed_count
 
 
@@ -459,12 +490,20 @@ def _activity_moving_time_seconds(activity):
 
 
 def _is_activity_store_fresh(max_age_minutes=30):
+    if HEATMAP_LAST_REFRESH_FILE.is_file():
+        refresh_timestamp = _read_activity_store_refresh_timestamp()
+        try:
+            age_seconds = datetime.now().timestamp() - refresh_timestamp
+            return age_seconds <= max_age_minutes * 60
+        except Exception:
+            return False
+
     if not HEATMAP_ACTIVITY_PKL_FILE.is_file():
         return False
 
     try:
         age_seconds = datetime.now().timestamp() - HEATMAP_ACTIVITY_PKL_FILE.stat().st_mtime
-        return age_seconds <= max_age_minutes * 1
+        return age_seconds <= max_age_minutes * 60
     except Exception:
         return False
 
@@ -1227,6 +1266,7 @@ def _run(argv=None):
             activities = load_pickled_activities()
             if not activities:
                 activities = downloaded_activities
+            _write_activity_store_refresh_timestamp()
 
         publish_pickle_summary(client)
 
