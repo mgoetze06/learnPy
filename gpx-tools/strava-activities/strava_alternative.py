@@ -257,9 +257,7 @@ def scan_heatmap_gpx_dir():
         key = _gpx_file_key(gpx_path.name)
         if key and key not in known_keys:
             missing_files.append(gpx_path.name)
-            activity = _activity_from_gpx_filename(gpx_path.name)
-            if add_activity_to_pickle(activity):
-                logToFile(f"Added missing GPX activity to pickle: {gpx_path.name}")
+            logToFile(f"Found GPX file missing from activity pickle: {gpx_path.name}")
 
     if missing_files:
         logToFile(
@@ -380,6 +378,39 @@ def _has_valid_activity_distance(activity):
     return _valid_activity_distance_meters(activity) is not None
 
 
+def _deduplicate_activities(activities):
+    if not isinstance(activities, list):
+        return []
+
+    candidates = {}
+    for activity in activities:
+        if not isinstance(activity, dict):
+            continue
+        activity_dt = _parse_activity_datetime(activity)
+        if activity_dt is None:
+            continue
+
+        activity_id = activity.get("id")
+        name = re.sub(r"[^a-z0-9]+", "", str(activity.get("name") or "").lower())
+        if activity_id not in (None, ""):
+            identity = ("id", str(activity_id))
+        else:
+            identity = ("fallback", activity_dt.strftime("%Y-%m-%d-%H-%M-%S"), name)
+
+        distance = _activity_distance_meters(activity)
+        existing = candidates.get(identity)
+        if existing is None or (distance > 0 and _activity_distance_meters(existing) <= 0):
+            candidates[identity] = activity
+
+    deduplicated = sorted(
+        candidates.values(),
+        key=lambda item: _parse_activity_datetime(item) or datetime.min,
+        reverse=True,
+    )
+    print(f"[DEBUG] Deduplicated {len(activities)} input activities into {len(deduplicated)} unique activities.")
+    return deduplicated
+
+
 def cleanup_zero_distance_activities():
     store = _load_activity_store()
 
@@ -418,7 +449,7 @@ def get_month_activity_rows(month_value, now=None):
     rows = []
     target_month = str(month_value)
 
-    for activity in load_pickled_activities():
+    for activity in _deduplicate_activities(load_pickled_activities()):
         if not isinstance(activity, dict):
             continue
 
@@ -681,6 +712,131 @@ def _get_weekly_distance_summary(activities, now=None, week_count=12):
     ]
 
 
+def _extract_gpx_ride_date(gpx_path):
+    match = re.search(r"(?<!\d)(\d{4})[-_](\d{2})[-_](\d{2})(?!\d)", gpx_path.name)
+    if match:
+        try:
+            return datetime(int(match.group(1)), int(match.group(2)), int(match.group(3))).date()
+        except ValueError:
+            pass
+
+    try:
+        import xml.etree.ElementTree as ET
+        root = ET.parse(gpx_path).getroot()
+        for element in root.iter():
+            if element.tag.rsplit("}", 1)[-1].lower() == "time" and element.text:
+                return datetime.fromisoformat(element.text.strip().replace("Z", "+00:00")).date()
+    except Exception:
+        return None
+    return None
+
+
+def get_gpx_ride_counts(gpx_dirs=None):
+    if gpx_dirs is None:
+        gpx_dirs = [PROJECT_ROOT, HEATMAP_GPX_DIR]
+
+    counts = {}
+    seen_files = set()
+    for gpx_dir in (Path(directory) for directory in gpx_dirs):
+        if not gpx_dir.is_dir():
+            continue
+        gpx_files = gpx_dir.rglob("*.gpx")
+        for gpx_path in gpx_files:
+            if not gpx_path.is_file():
+                continue
+            identity = str(gpx_path.resolve())
+            if identity in seen_files:
+                continue
+            seen_files.add(identity)
+            ride_date = _extract_gpx_ride_date(gpx_path)
+            if ride_date is not None:
+                counts[ride_date] = counts.get(ride_date, 0) + 1
+    return counts
+
+
+def _get_ride_calendar_level(count, max_count):
+    if count <= 0:
+        return 0
+    if max_count <= 1:
+        return 1
+    ratio = count / max_count
+    if ratio >= 0.75:
+        return 4
+    if ratio >= 0.5:
+        return 3
+    if ratio >= 0.25:
+        return 2
+    return 1
+
+
+def get_github_ride_calendar_html(year=None, gpx_dirs=None, activities=None):
+    ride_counts = get_gpx_ride_counts(gpx_dirs=gpx_dirs)
+    year = int(year or datetime.now().year)
+
+    daily_distance_meters = {}
+    if isinstance(activities, list) and activities:
+        ride_counts = {}
+        for activity in _deduplicate_activities(activities):
+            activity_dt = _parse_activity_datetime(activity)
+            if activity_dt is None or activity_dt.year != year:
+                continue
+
+            ride_day = activity_dt.date()
+            ride_counts[ride_day] = ride_counts.get(ride_day, 0) + 1
+            daily_distance_meters[ride_day] = (
+                daily_distance_meters.get(ride_day, 0.0)
+                + _activity_distance_meters(activity)
+            )
+
+    year_start = datetime(year, 1, 1).date()
+    year_end = datetime(year, 12, 31).date()
+    grid_start = year_start - timedelta(days=year_start.weekday())
+    grid_end = year_end + timedelta(days=6 - year_end.weekday())
+    max_count = max((ride_counts.get(day, 0) for day in ride_counts if day.year == year), default=0)
+
+    month_names = ("Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez")
+    month_labels = []
+    for month in range(1, 13):
+        first_day = datetime(year, month, 1).date()
+        week_column = (first_day - grid_start).days // 7 + 1
+        month_labels.append(f'<div class="ride-month" style="grid-column: {week_column}">{month_names[month - 1]}</div>')
+
+    week_columns = []
+    current = grid_start
+    while current <= grid_end:
+        days = []
+        for weekday in range(7):
+            day = current + timedelta(days=weekday)
+            if not (year_start <= day <= year_end):
+                days.append('<div class="ride-day outside"></div>')
+                continue
+
+            count = ride_counts.get(day, 0)
+            level = _get_ride_calendar_level(count, max_count) if count else 0
+            distance_km = daily_distance_meters.get(day, 0.0) / 1000
+            activity_label = "1 Aktivität" if count == 1 else f"{count} Aktivitäten"
+            tooltip = f"{day.strftime('%d.%m.%Y')} · {activity_label} · {distance_km:.1f} km"
+            tooltip_element = ""
+            if distance_km > 0:
+                tooltip_element = (
+                    f'<span class="ride-day-tooltip" aria-hidden="true">'
+                    f'{escape(tooltip)}</span>'
+                )
+            days.append(
+                f'<div class="ride-day level-{level}" role="img" '
+                f'aria-label="{escape(tooltip)}">'
+                f'{tooltip_element}'
+                f'</div>'
+            )
+        week_columns.append(f'<div class="ride-week">{"".join(days)}</div>')
+        current += timedelta(days=7)
+
+    return f"""<div class="card ride-calendar-card" style="width: 100%; margin: 12px auto 0; box-sizing: border-box; padding: 14px; background: #111827; border: 1px solid #374151; box-shadow: 0 2px 8px rgba(0,0,0,0.35);">
+    <div class="ride-calendar-scroll"><div class="ride-calendar"><div class="ride-weekdays"><span>Mon</span><span>Wed</span><span>Fri</span></div><div class="ride-grid-wrap"><div class="ride-months">{''.join(month_labels)}</div><div class="ride-grid">{''.join(week_columns)}</div></div></div></div>
+    <div class="ride-calendar-footer"><span>Less</span><i class="ride-day level-0"></i><i class="ride-day level-1"></i><i class="ride-day level-2"></i><i class="ride-day level-3"></i><i class="ride-day level-4"></i><span>More</span></div>
+</div>"""
+
+
 def get_last_ride_html(activities, now=None):
     now = now or datetime.now()
     activity = _select_latest_activity(activities)
@@ -693,32 +849,22 @@ def get_last_ride_html(activities, now=None):
     chart_top = 22
     chart_bottom = 104
     bar_slot_width = chart_width / len(weekly_distance_summary)
-    max_week_distance_km = max(
-        (week["distance_meters"] / 1000 for week in weekly_distance_summary),
-        default=0,
-    )
+    max_week_distance_km = max((week["distance_meters"] / 1000 for week in weekly_distance_summary), default=0)
+
     for index, week in enumerate(weekly_distance_summary):
         distance_km = week["distance_meters"] / 1000
         x = index * bar_slot_width + bar_slot_width / 2
-        y = (
-            chart_bottom - distance_km / max_week_distance_km * (chart_bottom - chart_top)
-            if max_week_distance_km > 0 else chart_bottom
-        )
+        y = chart_bottom - distance_km / max_week_distance_km * (chart_bottom - chart_top) if max_week_distance_km > 0 else chart_bottom
         weekly_chart_points.append(f"{x:.1f},{y:.1f}")
         week_label = week["start"].strftime("%d.%m")
-        tooltip = (
-            f'{week["start"].strftime("%d.%m.%Y")}–'
-            f'{week["end"].strftime("%d.%m.%Y")}: {distance_km:.1f} km'
-        )
+        tooltip = f'{week["start"].strftime("%d.%m.%Y")}–{week["end"].strftime("%d.%m.%Y")}: {distance_km:.1f} km'
         weekly_chart_markers.append(
             f'<g><title>{escape(tooltip)}</title>'
-            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3" fill="#38bdf8" '
-            f'stroke="#0f172a" stroke-width="1.5" />'
-            f'<text x="{x:.1f}" y="{y - 7:.1f}" text-anchor="middle" '
-            f'font-size="12" fill="#e5e7eb">{distance_km:.1f}</text>'
-            f'<text x="{x:.1f}" y="{chart_height - 18:.1f}" text-anchor="middle" '
-            f'font-size="12" fill="#9ca3af">{week_label}</text></g>'
+            f'<circle cx="{x:.1f}" cy="{y:.1f}" r="3" fill="#39d353" stroke="#0f172a" stroke-width="1.5" />'
+            f'<text x="{x:.1f}" y="{y - 7:.1f}" text-anchor="middle" font-size="12" fill="#e5e7eb">{distance_km:.1f}</text>'
+            f'<text x="{x:.1f}" y="{chart_height - 18:.1f}" text-anchor="middle" font-size="12" fill="#9ca3af">{week_label}</text></g>'
         )
+
     weekly_chart_polyline = " ".join(weekly_chart_points)
     weekly_chart = "".join(weekly_chart_markers)
     activities_with_distance = [
@@ -735,197 +881,101 @@ def get_last_ride_html(activities, now=None):
         start_dt = _parse_activity_datetime(item)
         start_text = start_dt.strftime("%d.%m.%Y %H:%M:%S") if start_dt else "Unbekannt"
         distance_km = _activity_distance_meters(item) / 1000
-        duration_minutes = round(_activity_moving_time_seconds(item) / 60)
-        duration_text = _format_duration(duration_minutes)
-        activity_rows.append(
-            f"<tr><td>{escape(start_text)}</td><td>{escape(duration_text)}</td>"
-            f"<td>{distance_km:.2f} km</td></tr>"
-        )
+        duration_text = _format_duration(round(_activity_moving_time_seconds(item) / 60))
+        activity_rows.append(f"<tr><td>{escape(start_text)}</td><td>{escape(duration_text)}</td><td>{distance_km:.2f} km</td></tr>")
     activity_rows = "".join(activity_rows)
-    data_block = f"""<div class=\"card\" style=\"width: min(100%, 720px); box-sizing: border-box; padding: 14px; background: #111827; border: 1px solid #374151; box-shadow: 0 2px 8px rgba(0,0,0,0.35);\">
-    <div class=\"title\">Daten</div>
-    <div class=\"meta\">Höhenmeter nach Zeitraum</div>
-    <div style=\"display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;\">
-        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
-            <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Diese Woche</div>
-            <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_week']['elevation_gain']} m</div>
-            <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_week']['count']} Fahrten</div>
-        </div>
-        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
-            <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Dieser Monat</div>
-            <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_month']['elevation_gain']} m</div>
-            <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_month']['count']} Fahrten</div>
-        </div>
-        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
-            <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Dieses Jahr</div>
-            <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_year']['elevation_gain']} m</div>
-            <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_year']['count']} Fahrten</div>
-        </div>
+
+    ride_calendar = get_github_ride_calendar_html(year=now.year, activities=activities)
+    data_block = f"""<div class="card" style="width: min(100%, 720px); box-sizing: border-box; padding: 14px; background: #111827; border: 1px solid #374151; box-shadow: 0 2px 8px rgba(0,0,0,0.35);">
+    <div class="title">Daten</div>
+    <div class="meta">Höhenmeter nach Zeitraum</div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;">
+        <div style="background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;"><div style="font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;">Diese Woche</div><div style="font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;">{period_summary['this_week']['elevation_gain']} m</div><div style="font-size: 0.75rem; color: #9ca3af; margin-top: 6px;">{period_summary['this_week']['count']} Fahrten</div></div>
+        <div style="background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;"><div style="font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;">Dieser Monat</div><div style="font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;">{period_summary['this_month']['elevation_gain']} m</div><div style="font-size: 0.75rem; color: #9ca3af; margin-top: 6px;">{period_summary['this_month']['count']} Fahrten</div></div>
+        <div style="background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;"><div style="font-size: 0.7rem; color: #9ca3af; text-transform: uppercase, letter-spacing: 0.04em;">Dieses Jahr</div><div style="font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;">{period_summary['this_year']['elevation_gain']} m</div><div style="font-size: 0.75rem; color: #9ca3af; margin-top: 6px;">{period_summary['this_year']['count']} Fahrten</div></div>
     </div>
-    <div class=\"meta\" style=\"margin-top: 12px; margin-bottom: 8px;\">Distanz nach Zeitraum</div>
-    <div style=\"display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;\">
-        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
-            <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Diese Woche</div>
-            <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_week']['distance_meters'] / 1000:.1f} km</div>
-            <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_week']['count']} Fahrten</div>
-        </div>
-        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
-            <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Dieser Monat</div>
-            <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_month']['distance_meters'] / 1000:.1f} km</div>
-            <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_month']['count']} Fahrten</div>
-        </div>
-        <div style=\"background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;\">
-            <div style=\"font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em;\">Dieses Jahr</div>
-            <div style=\"font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;\">{period_summary['this_year']['distance_meters'] / 1000:.1f} km</div>
-            <div style=\"font-size: 0.75rem; color: #9ca3af; margin-top: 6px;\">{period_summary['this_year']['count']} Fahrten</div>
-        </div>
+    <div class="meta" style="margin-top: 12px; margin-bottom: 8px;">Distanz nach Zeitraum</div>
+    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;">
+        <div style="background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;"><div style="font-size: 0.7rem; color: #9ca3af; text-transform: uppercase, letter-spacing: 0.04em;">Diese Woche</div><div style="font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;">{period_summary['this_week']['distance_meters'] / 1000:.1f} km</div><div style="font-size: 0.75rem; color: #9ca3af; margin-top: 6px;">{period_summary['this_week']['count']} Fahrten</div></div>
+        <div style="background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;"><div style="font-size: 0.7rem; color: #9ca3af; text-transform: uppercase, letter-spacing: 0.04em;">Dieser Monat</div><div style="font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;">{period_summary['this_month']['distance_meters'] / 1000:.1f} km</div><div style="font-size: 0.75rem; color: #9ca3af; margin-top: 6px;">{period_summary['this_month']['count']} Fahrten</div></div>
+        <div style="background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center;"><div style="font-size: 0.7rem; color: #9ca3af; text-transform: uppercase, letter-spacing: 0.04em;">Dieses Jahr</div><div style="font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px;">{period_summary['this_year']['distance_meters'] / 1000:.1f} km</div><div style="font-size: 0.75rem; color: #9ca3af; margin-top: 6px;">{period_summary['this_year']['count']} Fahrten</div></div>
     </div>
-    <div style=\"margin-top: 12px; overflow: hidden;\">
-        <div class=\"meta\" style=\"margin-bottom: 4px;\">Wöchentliche Distanz · letzte 12 Wochen (km)</div>
-        <svg viewBox=\"0 0 {chart_width} {chart_height}\" role=\"img\" aria-label=\"Wöchentliche Distanz der letzten 12 Wochen\" style=\"display: block; width: 100%; height: auto; max-height: 150px;\">
-            <polyline points=\"{weekly_chart_polyline}\" fill=\"none\" stroke=\"#38bdf8\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" />
-            {weekly_chart}
-        </svg>
-    </div>
-    <div style=\"margin-top: 12px; overflow-x: auto;\">
-        <div class=\"title\" style=\"font-size: 0.95rem;\">Letzte 15 Aktivitäten</div>
-        <table style=\"width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left;\">
-            <thead>
-                <tr style=\"color: #9ca3af; border-bottom: 1px solid #374151;\">
-                    <th style=\"padding: 4px 3px;\">Startzeit</th>
-                    <th style=\"padding: 4px 3px; text-align: right;\">Dauer</th>
-                    <th style=\"padding: 4px 3px; text-align: right;\">Distanz</th>
-                </tr>
-            </thead>
-            <tbody>{activity_rows}</tbody>
-        </table>
-    </div>
+    <div style="margin-top: 12px; overflow: hidden;"><div class="meta" style="margin-bottom: 4px;">Wöchentliche Distanz · letzte 12 Wochen (km)</div><svg viewBox="0 0 {chart_width} {chart_height}" role="img" aria-label="Wöchentliche Distanz der letzten 12 Wochen" style="display: block; width: 100%; height: auto; max-height: 150px;"><polyline points="{weekly_chart_polyline}" fill="none" stroke="#39d353" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />{weekly_chart}</svg></div>
+    {ride_calendar}
+    <div style="margin-top: 12px; overflow-x: auto;"><div class="title" style="font-size: 0.95rem;">Letzte 15 Aktivitäten</div><table style="width: 100%; border-collapse: collapse; font-size: 0.8rem; text-align: left;"><thead><tr style="color: #9ca3af; border-bottom: 1px solid #374151;"><th style="padding: 4px 3px;">Startzeit</th><th style="padding: 4px 3px; text-align: right;">Dauer</th><th style="padding: 4px 3px; text-align: right;">Distanz</th></tr></thead><tbody>{activity_rows}</tbody></table></div>
 </div>"""
 
     if not activity:
-        return f"""<!DOCTYPE html>
-<html lang=\"de\">
-<head>
-    <meta charset=\"UTF-8\">
-    <title>Letzte Fahrt</title>
-    <style>
-        body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f3f4f6; color: #111827; }}
-        .card {{ box-sizing: border-box; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 14px; width: min(100%, 720px); }}
-        .title {{ font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }}
-        .meta {{ color: #6b7280; font-size: 0.95rem; margin-bottom: 12px; }}
-        .message {{ color: #374151; font-size: 0.95rem; line-height: 1.5; }}
-    </style>
-</head>
-<body>
-    <div class=\"card\">
-        <div class=\"title\">Letzte Fahrt</div>
-        <div class=\"meta\">{now.strftime('%d.%m.%Y %H:%M:%S')}</div>
-        <div class=\"message\">Noch keine Daten verfügbar.</div>
-    </div>
-    {data_block}
-</body>
-</html>"""
+        return f"""<!DOCTYPE html><html lang="de"><head><meta charset="UTF-8"><title>Letzte Fahrt</title><style>body {{ font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f3f4f6; color: #111827; }}.card {{ box-sizing: border-box; background: white; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); padding: 14px; width: min(100%, 720px); }}.title {{ font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; }}.meta {{ color: #6b7280; font-size: 0.95rem; margin-bottom: 12px; }}.message {{ color: #374151; font-size: 0.95rem; line-height: 1.5; }}</style></head><body><div class="card"><div class="title">Letzte Fahrt</div><div class="meta">{now.strftime('%d.%m.%Y %H:%M:%S')}</div><div class="message">Noch keine Daten verfügbar.</div></div>{data_block}</body></html>"""
 
     name = escape(str(activity.get("name") or "Unbekannte Fahrt"))
     start_dt = _parse_activity_datetime(activity)
     start_text = start_dt.strftime("%d.%m.%Y %H:%M") if start_dt else "Unbekannt"
+    start_meta = start_text
     if start_dt:
         start_iso = start_dt.strftime("%Y-%m-%dT%H:%M:%S")
         start_relative = _format_relative_time(start_dt, now=now)
-        start_meta = (
-            f'<span id="activity-start" data-ts="{start_iso}">{start_text}</span> '
-            f'(<span id="activity-start-relative">{start_relative}</span>)'
-        )
-    else:
-        start_meta = start_text
+        start_meta = f'<span id="activity-start" data-ts="{start_iso}">{start_text}</span> (<span id="activity-start-relative">{start_relative}</span>)'
     distance_km = round(_activity_distance_meters(activity) / 1000, 2)
     speed_kmh = round(_activity_average_speed(activity) * 3.6, 2)
-    duration_minutes = round(_activity_moving_time_seconds(activity) / 60)
-    duration_text = _format_duration(duration_minutes)
+    duration_text = _format_duration(round(_activity_moving_time_seconds(activity) / 60))
 
     html = f"""<!DOCTYPE html>
-<html lang=\"de\">
+<html lang="de">
 <head>
-    <meta charset=\"UTF-8\">
-    <meta http-equiv=\"refresh\" content=\"15\">
+    <meta charset="UTF-8">
+    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
     <title>Letzte Fahrt</title>
     <style>
         body {{ font-family: Arial, sans-serif; margin: 0; min-height: 100vh; padding: 12px; background: #0f172a; color: #e5e7eb; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: flex-start; box-sizing: border-box; }}
         .card {{ box-sizing: border-box; background: #111827; border: 1px solid #374151; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.35); padding: 14px; width: min(100%, 720px); }}
         .title {{ font-size: 1.05rem; font-weight: 600; margin-bottom: 5px; color: #f9fafb; }}
-        .meta {{ color: #9ca3af; font-size: 0.9rem; margin-bottom: 12px; }}
         .stats {{ display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }}
         .stat {{ background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 8px; text-align: center; }}
         .label {{ font-size: 0.75rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; }}
         .value {{ font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px; }}
-        .summary {{ margin-top: 14px; background: #1f2937; border: 1px solid #374151; border-radius: 10px; padding: 12px; }}
-        .summary-title {{ font-size: 0.9rem; font-weight: 600; color: #f9fafb; margin-bottom: 8px; }}
-        .summary-grid {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }}
-        .summary-item {{ background: #111827; border: 1px solid #374151; border-radius: 8px; padding: 8px; text-align: center; }}
-        .summary-item .label {{ font-size: 0.7rem; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.04em; }}
-        .summary-item .value {{ font-size: 1rem; font-weight: 600; color: #f9fafb; margin-top: 4px; }}
-        .summary-note {{ margin-top: 10px; color: #9ca3af; font-size: 0.8rem; line-height: 1.4; }}
         .footer {{ margin-top: 10px; color: #9ca3af; font-size: 0.82rem; }}
         table tbody tr {{ border-bottom: 1px solid #1f2937; }}
         table tbody tr:last-child {{ border-bottom: none; }}
         table tbody td {{ padding: 4px 3px; }}
         table tbody td:last-child {{ text-align: right; white-space: nowrap; }}
+        .ride-calendar-scroll {{ overflow-x: hidden; padding: 4px 2px 8px; }}
+        .ride-calendar {{ display: grid; grid-template-columns: 28px minmax(528px, 1fr); gap: 7px; min-width: 563px; }}
+        .ride-weekdays {{ display: grid; grid-template-rows: repeat(7, 8px); gap: 2px; color: #9ca3af; font-size: 9px; padding-top: 18px; }}
+        .ride-grid-wrap {{ min-width: 528px; }}
+        .ride-months {{ display: grid; grid-template-columns: repeat(53, 8px); column-gap: 2px; height: 14px; color: #9ca3af; font-size: 10px; }}
+        .ride-grid {{ display: grid; grid-template-columns: repeat(53, 8px); gap: 2px; }}
+        .ride-week {{ display: grid; grid-template-rows: repeat(7, 8px); gap: 2px; }}
+        .ride-day {{ display: block; width: 8px; height: 8px; border-radius: 2px; background: #161b22; border: 1px solid rgba(110,118,129,.18); }}
+        .ride-day.level-0 {{ background: #161b22; }}
+        .ride-day.level-1 {{ background: #0e4429; }}
+        .ride-day.level-2 {{ background: #006d32; }}
+        .ride-day.level-3 {{ background: #26a641; }}
+        .ride-day.level-4 {{ background: #39d353; }}
+        .ride-calendar-card {{ margin-left: auto !important; margin-right: auto !important; }}
+        .ride-calendar-scroll {{ display: flex; justify-content: center; }}
+        .ride-day {{ position: relative; }}
+        .ride-day-tooltip {{ position: absolute; left: 50%; bottom: calc(100% + 6px); z-index: 20; transform: translateX(-50%) translateY(2px); width: max-content; max-width: 180px; padding: 4px 6px; border: 1px solid #374151; border-radius: 5px; background: #111827; color: #f9fafb; font-size: 10px; line-height: 1.2; opacity: 0; pointer-events: none; transition: opacity 120ms ease, transform 120ms ease; box-shadow: 0 2px 6px rgba(0,0,0,.35); }}
+        .ride-day:not(.outside):hover {{ z-index: 30; outline: 1px solid #d1d5db; transform: scale(1.35); }}
+        .ride-day:not(.outside):hover .ride-day-tooltip {{ opacity: 1; transform: translateX(-50%) translateY(0); }}
+        .ride-calendar-footer {{ display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 5px; color: #9ca3af; font-size: 10px; }}
+        .ride-calendar-footer .ride-day {{ width: 8px; height: 8px; }}
     </style>
 </head>
 <body>
-    <div class=\"card\">
-        <div class=\"title\">{name}</div>
-        <div class=\"meta\">{start_meta}</div>
-        <div class=\"stats\">
-            <div class=\"stat\">
-                <div class=\"label\">Ø Geschwindigkeit</div>
-                <div class=\"value\">{speed_kmh} km/h</div>
-            </div>
-            <div class=\"stat\">
-                <div class=\"label\">Distanz</div>
-                <div class=\"value\">{distance_km} km</div>
-            </div>
-            <div class=\"stat\">
-                <div class=\"label\">Dauer</div>
-                <div class=\"value\">{duration_text}</div>
-            </div>
-        </div>
-        <div class=\"footer\">Letzte Aktualisierung: <span id=\"last-update\" data-ts=\"{now.strftime('%Y-%m-%dT%H:%M:%S')}\">{now.strftime('%d.%m.%Y %H:%M:%S')}</span> (<span id=\"last-update-relative\">lade...</span>)</div>
-    </div>
+    <div class="card"><div class="title">{name}</div><div class="meta">{start_meta}</div><div class="stats"><div class="stat"><div class="label">Ø Geschwindigkeit</div><div class="value">{speed_kmh} km/h</div></div><div class="stat"><div class="label">Distanz</div><div class="value">{distance_km} km</div></div><div class="stat"><div class="label">Dauer</div><div class="value">{duration_text}</div></div></div><div class="footer">Letzte Aktualisierung: <span id="last-update" data-ts="{now.strftime('%Y-%m-%dT%H:%M:%S')}">{now.strftime('%d.%m.%Y %H:%M:%S')}</span> (<span id="last-update-relative">lade...</span>)</div></div>
     {data_block}
     <script>
         (function(){{
-            function formatRelative(pastIso) {{
-                var now = new Date();
-                var past = new Date(pastIso);
-                var delta = Math.floor((now - past) / 1000);
-                if (delta < 60) return "gerade eben";
-                var minutes = Math.floor(delta / 60);
-                if (minutes < 60) return "vor " + minutes + " Minute" + (minutes !== 1 ? "n" : "");
-                var hours = Math.floor(minutes / 60);
-                if (hours < 24) return "vor " + hours + " Stunde" + (hours !== 1 ? "n" : "");
-                var days = Math.floor(hours / 24);
-                var remainingHours = hours % 24;
-                return "vor " + days + " Tag" + (days !== 1 ? "en" : "") +
-                    " und " + remainingHours + " Stunde" + (remainingHours !== 1 ? "n" : "");
-            }}
-
-            function updateRelative(tsId, relId) {{
-                var tsEl = document.getElementById(tsId);
-                var relEl = document.getElementById(relId);
-                if (!tsEl || !relEl) return;
-                var iso = tsEl.getAttribute('data-ts');
-                if (!iso) return;
-                relEl.textContent = formatRelative(iso);
-            }}
-
-            // Update immediately and then every 15 seconds
-            function updateRelativeTimes() {{
-                updateRelative('last-update', 'last-update-relative');
-                updateRelative('activity-start', 'activity-start-relative');
-            }}
-            updateRelativeTimes();
-            setInterval(updateRelativeTimes, 15000);
+            function formatRelative(pastIso) {{ var now = new Date(); var past = new Date(pastIso); var delta = Math.floor((now - past) / 1000); if (delta < 60) return "gerade eben"; var minutes = Math.floor(delta / 60); if (minutes < 60) return "vor " + minutes + " Minute" + (minutes !== 1 ? "n" : ""); var hours = Math.floor(minutes / 60); if (hours < 24) return "vor " + hours + " Stunde" + (hours !== 1 ? "n" : ""); var days = Math.floor(hours / 24); var remainingHours = hours % 24; return "vor " + days + " Tag" + (days !== 1 ? "en" : "") + " und " + remainingHours + " Stunde" + (remainingHours !== 1 ? "n" : ""); }}
+            function updateRelative(tsId, relId) {{ var tsEl = document.getElementById(tsId); var relEl = document.getElementById(relId); if (!tsEl || !relEl) return; relEl.textContent = formatRelative(tsEl.getAttribute('data-ts')); }}
+            function updateRelativeTimes() {{ updateRelative('last-update', 'last-update-relative'); updateRelative('activity-start', 'activity-start-relative'); }}
+            updateRelativeTimes(); setInterval(updateRelativeTimes, 15000);
+            setInterval(function() {{
+                var url = new URL(window.location.href);
+                url.searchParams.set('_t', Date.now());
+                window.location.replace(url.toString());
+            }}, 15000);
         }})();
     </script>
 </body>
@@ -944,20 +994,24 @@ def copyStravaAnalyseToHA(filename):
 
 
 def create_last_ride_html_file(filename, activities, now=None):
+    print(f"[DEBUG] Creating HTML file: {filename}")
     HEATMAP_DIR.mkdir(parents=True, exist_ok=True)
     output_path = HEATMAP_DIR / filename
-    html = get_last_ride_html(activities, now=now)
-
     try:
-        if output_path.exists():
-            output_path.unlink()
-        with open(output_path, "w", encoding="utf-8") as file:
+        html = get_last_ride_html(activities, now=now)
+        print(f"[DEBUG] Generated HTML content: {len(html)} bytes")
+        with open(output_path, "w", encoding="utf-8", newline="") as file:
             file.write(html)
+            file.flush()
+            os.fsync(file.fileno())
+        print(f"[DEBUG] Wrote HTML file: {output_path} ({output_path.stat().st_size} bytes)")
         copyStravaAnalyseToHA(filename)
+        return output_path
     except Exception as e:
-        logToFile(str(e))
-
-    return output_path
+        message = f"Failed to create HTML: {type(e).__name__}: {e}\n{traceback.format_exc()}"
+        print(f"[DEBUG] {message}")
+        logToFile(message)
+        raise
 
 
 def createStravaAnalyseHtml(filename, activities, now=None):
@@ -1178,6 +1232,7 @@ def sync_activities(sleeptime = 5, header=None):
         logToFile(f"Sync failed: {e}")
 
 def downloadGPXFile():
+    print("[DEBUG] Starting activity fetch")
     header = getFullIntervalsHeaderWithAccessToken()
 
     sync_activities(5, header)
