@@ -685,7 +685,7 @@ def _get_weekly_distance_summary(activities, now=None, week_count=12):
     current_monday = now.date() - timedelta(days=now.weekday())
     first_monday = current_monday - timedelta(weeks=week_count - 1)
     weeks = [
-        {"start": first_monday + timedelta(weeks=index), "distance_meters": 0.0}
+        {"start": first_monday + timedelta(weeks=index), "distance_meters": 0.0, "ride_count": 0}
         for index in range(week_count)
     ]
 
@@ -924,7 +924,6 @@ def get_last_ride_html(activities, now=None):
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="Cache-Control" content="no-store, no-cache, must-revalidate, max-age=0">
     <title>Letzte Fahrt</title>
     <style>
         body {{ font-family: Arial, sans-serif; margin: 0; min-height: 100vh; padding: 12px; background: #0f172a; color: #e5e7eb; display: flex; flex-direction: column; gap: 12px; align-items: center; justify-content: flex-start; box-sizing: border-box; }}
@@ -955,9 +954,10 @@ def get_last_ride_html(activities, now=None):
         .ride-calendar-card {{ margin-left: auto !important; margin-right: auto !important; }}
         .ride-calendar-scroll {{ display: flex; justify-content: center; }}
         .ride-day {{ position: relative; }}
-        .ride-day-tooltip {{ position: absolute; left: 50%; bottom: calc(100% + 6px); z-index: 20; transform: translateX(-50%) translateY(2px); width: max-content; max-width: 180px; padding: 4px 6px; border: 1px solid #374151; border-radius: 5px; background: #111827; color: #f9fafb; font-size: 10px; line-height: 1.2; opacity: 0; pointer-events: none; transition: opacity 120ms ease, transform 120ms ease; box-shadow: 0 2px 6px rgba(0,0,0,.35); }}
-        .ride-day:not(.outside):hover {{ z-index: 30; outline: 1px solid #d1d5db; transform: scale(1.35); }}
-        .ride-day:not(.outside):hover .ride-day-tooltip {{ opacity: 1; transform: translateX(-50%) translateY(0); }}
+        .ride-day-tooltip {{ position: fixed; left: 0; top: 0; z-index: 1000; transform: translate(-50%, -100%); width: max-content; max-width: 180px; padding: 5px 7px; border: 1px solid #374151; border-radius: 5px; background: #111827; color: #f9fafb; font-size: 10px; line-height: 1.2; opacity: 0; pointer-events: none; transition: opacity 120ms ease; box-shadow: 0 3px 10px rgba(0,0,0,.45); }}
+        .ride-day-tooltip.below {{ transform: translate(-50%, 0); }}
+        .ride-day:not(.outside):hover {{ z-index: 30; outline: 1px solid #d1d5db; }}
+        .ride-day:not(.outside):hover .ride-day-tooltip {{ opacity: 1; }}
         .ride-calendar-footer {{ display: flex; align-items: center; justify-content: flex-end; gap: 4px; margin-top: 5px; color: #9ca3af; font-size: 10px; }}
         .ride-calendar-footer .ride-day {{ width: 8px; height: 8px; }}
     </style>
@@ -970,13 +970,26 @@ def get_last_ride_html(activities, now=None):
             function formatRelative(pastIso) {{ var now = new Date(); var past = new Date(pastIso); var delta = Math.floor((now - past) / 1000); if (delta < 60) return "gerade eben"; var minutes = Math.floor(delta / 60); if (minutes < 60) return "vor " + minutes + " Minute" + (minutes !== 1 ? "n" : ""); var hours = Math.floor(minutes / 60); if (hours < 24) return "vor " + hours + " Stunde" + (hours !== 1 ? "n" : ""); var days = Math.floor(hours / 24); var remainingHours = hours % 24; return "vor " + days + " Tag" + (days !== 1 ? "en" : "") + " und " + remainingHours + " Stunde" + (remainingHours !== 1 ? "n" : ""); }}
             function updateRelative(tsId, relId) {{ var tsEl = document.getElementById(tsId); var relEl = document.getElementById(relId); if (!tsEl || !relEl) return; relEl.textContent = formatRelative(tsEl.getAttribute('data-ts')); }}
             function updateRelativeTimes() {{ updateRelative('last-update', 'last-update-relative'); updateRelative('activity-start', 'activity-start-relative'); }}
-            updateRelativeTimes(); setInterval(updateRelativeTimes, 15000);
-            setInterval(function() {{
-                var url = new URL(window.location.href);
-                url.searchParams.set('_t', Date.now());
-                window.location.replace(url.toString());
-            }}, 15000);
+            updateRelativeTimes();
         }})();
+    </script>
+    <script>
+        function placeRideTooltip(event, tooltip) {{
+            var rect = tooltip.getBoundingClientRect();
+            var halfWidth = rect.width / 2;
+            var left = Math.max(halfWidth + 8, Math.min(window.innerWidth - halfWidth - 8, event.clientX));
+            var placeBelow = event.clientY - rect.height - 12 < 8;
+            var top = placeBelow ? event.clientY + 12 : event.clientY - 12;
+            tooltip.classList.toggle('below', placeBelow);
+            tooltip.style.left = left + 'px';
+            tooltip.style.top = top + 'px';
+        }}
+        document.querySelectorAll('.ride-day-tooltip').forEach(function(tooltip) {{
+            var day = tooltip.closest('.ride-day');
+            if (!day) return;
+            day.addEventListener('mouseenter', function(event) {{ placeRideTooltip(event, tooltip); }});
+            day.addEventListener('mousemove', function(event) {{ placeRideTooltip(event, tooltip); }});
+        }});
     </script>
 </body>
 </html>"""
@@ -1240,6 +1253,7 @@ def downloadGPXFile():
 
     print("Fetching activities after sync...")
     activities = get_intervals_activities(header)
+    print(f"[DEBUG] Activity API returned {len(activities) if isinstance(activities, list) else 0} activities")
     if not activities:
         print("no activities")
         logToFile("no activities")
@@ -1272,6 +1286,7 @@ def downloadGPXFile():
 
 
 def _run(argv=None):
+    print("[DEBUG] Starting strava_alternative run")
     parser = argparse.ArgumentParser(description="Strava heatmap sync helper")
     parser.add_argument("--delete-activity-id", type=str, help="Delete an activity from the pickle by its ID and remove matching GPX files.")
     parser.add_argument("--scan-heatmap-gpx-dir", action="store_true", help="Check the heatmap GPX directory against the pickle and print missing files.")
